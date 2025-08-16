@@ -93,7 +93,25 @@ export const useAuthStore = create((set, get) => ({
   },
 
   // Auth — Reset Password (email + otp + newPassword)
-  
+  // Auth — Reset Password (email + otp + newPassword)
+resetPassword: async ({ email, otp, newPassword }) => {
+  set({ isLoading: true, error: null });
+  try {
+    // Backend expects: { email, otp, newPassword }
+    const { data } = await api.post("/api/auth/reset-password", {
+      email,
+      otp,
+      newPassword,
+    });
+    set({ isLoading: false });
+    return data; // e.g. { message: "Password reset successful" }
+  } catch (err) {
+    const msg = err?.response?.data?.error || "Failed to reset password";
+    set({ error: msg, isLoading: false });
+    throw new Error(msg);
+  }
+},
+
 
   // Refresh current user (/api/user/me)
   checkAuth: async () => {

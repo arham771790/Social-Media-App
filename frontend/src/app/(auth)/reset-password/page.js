@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = "force-dynamic"; // ✅ disables static prerendering so build won’t fail
+
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -55,6 +57,37 @@ export default function ResetPasswordPage() {
       setValidationErrors((prev) => ({ ...prev, [name]: '' }));
     }
   };
+  const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (!validateForm()) return;
+
+  try {
+    const res = await resetPassword({
+      email: formData.email,
+      otp: formData.otp,
+      newPassword: formData.password,
+    });
+
+    const msg = res?.message || 'Password reset successful';
+
+    // ✅ show success toast
+    toast({
+      title: 'Password Updated',
+      description: msg,
+      variant: 'default', // or 'success' if you’ve customized variants
+    });
+
+    setSuccessMessage(msg);
+
+    // Clear sensitive inputs & lock form
+    setFormData((s) => ({ ...s, otp: '', password: '', confirmPassword: '' }));
+
+    // Optional: redirect after a moment
+    setTimeout(() => router.push('/login'), 1500);
+  } catch (err) {
+    // store already set the error; toast handled in useEffect
+  }
+};
 
   const validateForm = () => {
     const errors = {};
@@ -73,30 +106,7 @@ export default function ResetPasswordPage() {
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateForm()) return;
-
-    try {
-      const res = await resetPassword({
-        email: formData.email,
-        otp: formData.otp,
-        newPassword: formData.password,
-      });
-
-      const msg = res?.message || 'Password reset successful';
-      setSuccessMessage(msg);                                 // ✅ local UI state change -> rerender
-      toast({ title: 'Success', description: msg });
-
-      // Clear sensitive inputs & lock form
-      setFormData((s) => ({ ...s, otp: '', password: '', confirmPassword: '' }));
-
-      // Optional: redirect after a moment
-      setTimeout(() => router.push('/login'), 1500);
-    } catch (err) {
-      // store already set the error; toast handled in useEffect
-    }
-  };
+  
 
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
@@ -184,7 +194,7 @@ export default function ResetPasswordPage() {
           <div className="mt-6 text-center">
             <Link href="/login" className="text-blue-400 hover:text-blue-300 text-sm flex items-center justify-center gap-1">
               <ArrowLeft className="w-4 h-4" />
-              Back to login-
+              Back to login
             </Link>
           </div>
         </CardContent>
