@@ -1,0 +1,348 @@
+generator client {
+  provider = "prisma-client-js" // Generates Prisma Client for JS/TS
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL") // Connection string from .env
+}
+
+//
+// ---------- USER & SETTINGS ----------
+// Represents an application user, connected to social features, chats, calls, posts.
+//
+model User {
+  id       String  @id @default(uuid()) // Unique user ID
+  username String  @unique              // Public handle (display name)
+  email    String  @unique              // Login email
+  password String?                      // Hashed password (nullable for OAuth users)
+  avatar   String?                      // Profile picture URL
+  bio      String?                      // User bio/about section
+  isPublic Boolean @default(true)       // Public or private profile
+
+  // OAuth (social login) fields
+  oauthProvider OAuthProvider?
+  oauthId       String?
+
+  // Password reset fields
+  resetToken       String?
+  resetTokenExpiry DateTime?
+
+  // Contacts / friend system
+  contacts  User[] @relation("UserContacts") // Contacts this user has added
+  contactOf User[] @relation("UserContacts") // Users who have this user in contacts
+
+  // Follow system
+  following Follow[] @relation("Following") // Users this user follows
+  followers Follow[] @relation("Followers") // Users following this user
+
+  // Social content
+  posts     Post[]    @relation("UserPosts")    // Posts authored
+  comments  Comment[] @relation("UserComments") // Comments authored
+  bookmarks Post[]    @relation("BookmarkedPosts")
+  likes     Post[]    @relation("LikedPosts")
+  shares    Share[]   @relation("UserShares")
+
+  // Stories, views, impressions
+  stories              Story[]                    // Stories posted
+  profileViewsGiven    ProfileView[] @relation("Viewer") // Profiles this user viewed
+  profileViewsReceived ProfileView[] @relation("Viewed") // Users who viewed this profile
+  impressions          PostImpression[]           // Post views from this user
+
+  // Chat & calls
+  groupCalls          GroupCall[] @relation("GroupCallParticipants") // Group calls participated in
+  initiatedGroupCalls GroupCall[] @relation("GroupCallInitiator")     // Group calls initiated
+  groupChatsAdmin     ChatGroup[] @relation("GroupAdmins")            // Groups where user is admin
+  groupChatsMember    ChatGroup[] @relation("GroupMembers")           // Groups where user is member
+  createdGroups       ChatGroup[] @relation("ChatGroupCreator")       // Groups this user created
+  readMessages        Message[]   @relation("ReadMessages")           // Messages read by user
+  callsMade           Call[]      @relation("CallsMade")              // 1-on-1 calls made
+  callsRecvd          Call[]      @relation("CallsReceived")          // 1-on-1 calls received
+  messages            Message[]   @relation("UserMessages")           // Messages sent by user
+
+  // Notifications
+  notifications Notification[] // Notifications received
+
+  // Settings/preferences
+  settings UserSettings?
+
+  createdAt DateTime @default(now()) // Account creation date
+}
+
+//
+// ---------- CHAT TYPES ENUM ----------
+// Used to distinguish 1-on-1 (DIRECT) and GROUP chats.
+//
+enum ChatType {
+  DIRECT
+  GROUP
+}
+
+//
+// ---------- GROUP & DIRECT CHATS ----------
+// This model handles both direct messages and group chats.
+// - DIRECT: exactly 2 members, unique per pair via `directKey`
+// - GROUP: >= 3 members, optional admins, custom name & image.
+//
+model ChatGroup {
+  id             String     @id @default(uuid())
+  name           String
+  description    String?
+  imageUrl       String?
+  type           ChatType   @default(GROUP)
+  directKey      String?    @unique
+  createdBy      User       @relation("ChatGroupCreator", fields: [createdById], references: [id])
+  createdById    String
+  admins         User[]     @relation("GroupAdmins")
+  members        User[]     @relation("GroupMembers")
+  messages       Message[]
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  lastActivityAt DateTime? 
+  archived       Boolean    @default(false) // user hides chat without deleting
+  lastMessage    Message?   @relation("LastMessage", fields: [lastMessageId], references: [id])
+  lastMessageId  String?    @unique
+  @@index([lastActivityAt])
+}
+
+
+//
+// ---------- MESSAGES ----------
+// Messages sent in a ChatGroup (direct or group).
+// Supports text, media, files, call invites, and read receipts.
+//
+model Message {
+  id          String     @id @default(uuid())
+  content     String?
+  mediaUrl    String?
+  type        MessageType
+  sender      User       @relation("UserMessages", fields: [senderId], references: [id])
+  senderId    String
+  chatGroup   ChatGroup  @relation(fields: [chatGroupId], references: [id])
+  chatGroupId String
+  createdAt   DateTime   @default(now())
+  readBy      User[]     @relation("ReadMessages")
+  isSystem    Boolean    @default(false) // for join/leave/call invite messages
+  // Relation to ChatGroup for last message
+  lastMessageOf ChatGroup? @relation("LastMessage")
+}
+
+
+//
+// ---------- MESSAGE TYPE ENUM ----------
+// Allowed types for chat messages.
+//
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  FILE
+  CALL_INVITE
+}
+
+// --------------------
+// Other models below remain mostly unchanged, only comments clarified
+// --------------------
+
+model Post {
+  id            String    @id @default(uuid()) // Unique post ID
+  title         String?                          // Optional post title
+  content       String?                          // Main content
+  aiDescription String?                          // AI-generated summary
+  type          PostType @default(TEXT)          // Type of post
+  mediaUrl      String?                          // Attached media
+  thumbnailUrl  String?                          // Preview image
+  isAnonymous   Boolean  @default(false)         // Hide author identity
+  isPublic      Boolean  @default(true)          // Public or private visibility
+
+  author   User   @relation("UserPosts", fields: [authorId], references: [id])
+  authorId String
+
+  tags         Tag[]   @relation("PostTags")
+  likedBy      User[]  @relation("LikedPosts")
+  bookmarkedBy User[]  @relation("BookmarkedPosts")
+  shares       Share[] @relation("PostShares")
+
+  comments    Comment[]        @relation("PostComments")
+  impressions PostImpression[]
+
+  parentPost   Post?   @relation("ThreadReplies", fields: [parentPostId], references: [id])
+  parentPostId String?
+  replies      Post[]  @relation("ThreadReplies")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Tag {
+  id    String @id @default(uuid())
+  name  String @unique
+  posts Post[] @relation("PostTags")
+}
+
+model Comment {
+  id        String    @id @default(uuid())
+  content   String
+  author    User      @relation("UserComments", fields: [authorId], references: [id])
+  authorId  String
+  post      Post      @relation("PostComments", fields: [postId], references: [id])
+  postId    String
+  parent    Comment?  @relation("ParentComment", fields: [parentId], references: [id])
+  parentId  String?
+  replies   Comment[] @relation("ParentComment")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Share {
+  id        String   @id @default(uuid())
+  post      Post     @relation("PostShares", fields: [postId], references: [id])
+  postId    String
+  user      User     @relation("UserShares", fields: [userId], references: [id])
+  userId    String
+  comment   String?
+  createdAt DateTime @default(now())
+}
+
+model Follow {
+  id          String       @id @default(uuid())
+  follower    User         @relation("Following", fields: [followerId], references: [id])
+  followerId  String
+  following   User         @relation("Followers", fields: [followingId], references: [id])
+  followingId String
+  status      FollowStatus @default(ACCEPTED) // For private profiles can be PENDING
+  createdAt   DateTime     @default(now())
+  respondedAt DateTime?
+
+  @@unique([followerId, followingId])
+}
+
+model Story {
+  id        String    @id @default(uuid())
+  user      User      @relation(fields: [userId], references: [id])
+  userId    String
+  mediaUrl  String
+  type      StoryType
+  caption   String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  isPublic  Boolean   @default(true)
+}
+
+model Notification {
+  id            String           @id @default(uuid())
+  type          NotificationType
+  message       String
+  recipient     User             @relation(fields: [recipientId], references: [id])
+  recipientId   String
+  createdAt     DateTime         @default(now())
+  read          Boolean          @default(false)
+  relatedUserId String?
+  relatedPostId String?
+
+  @@index([recipientId, createdAt])
+}
+
+model PostImpression {
+  id       String   @id @default(uuid())
+  user     User?    @relation(fields: [userId], references: [id])
+  userId   String?
+  post     Post     @relation(fields: [postId], references: [id])
+  postId   String
+  viewedAt DateTime @default(now())
+  ip       String?
+}
+
+model ProfileView {
+  id       String   @id @default(uuid())
+  viewer   User?    @relation("Viewer", fields: [viewerId], references: [id])
+  viewerId String?
+  viewed   User     @relation("Viewed", fields: [viewedId], references: [id])
+  viewedId String
+  viewedAt DateTime @default(now())
+}
+
+model Call {
+  id        String     @id @default(uuid())
+  caller    User       @relation("CallsMade", fields: [callerId], references: [id])
+  callerId  String
+  callee    User       @relation("CallsReceived", fields: [calleeId], references: [id])
+  calleeId  String
+  startedAt DateTime   @default(now())
+  endedAt   DateTime?
+  status    CallStatus
+}
+
+model GroupCall {
+  id           String     @id @default(uuid())
+  roomId       String     @unique
+  initiator    User       @relation("GroupCallInitiator", fields: [initiatorId], references: [id])
+  initiatorId  String
+  participants User[]     @relation("GroupCallParticipants")
+  startedAt    DateTime   @default(now())
+  endedAt      DateTime?
+  status       CallStatus
+  isVideo      Boolean    @default(true)
+}
+
+model UserSettings {
+  id                 String   @id @default(uuid())
+  user               User     @relation(fields: [userId], references: [id])
+  userId             String   @unique
+  darkMode           Boolean  @default(false)
+  notificationEmail  Boolean  @default(true)
+  notificationPush   Boolean  @default(true)
+  showActivityStatus Boolean  @default(true)
+  language           String   @default("en")
+  privacyProfile     Boolean  @default(false)
+  privacyLastSeen    Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
+
+//
+// ---------- ENUMS ----------
+enum FollowStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  BLOCKED
+}
+
+enum CallStatus {
+  ONGOING
+  ENDED
+  MISSED
+  REJECTED
+}
+
+enum PostType {
+  BLOG
+  TEXT
+  IMAGE
+  VIDEO
+}
+
+enum StoryType {
+  IMAGE
+  VIDEO
+}
+
+enum NotificationType {
+  FOLLOW
+  LIKE
+  COMMENT
+  REPLY
+  MENTION
+  MESSAGE
+  CALL
+  TRENDING
+  GROUP_INVITE
+  FOLLOW_REQUEST
+  FOLLOW_ACCEPTED
+}
+
+enum OAuthProvider {
+  GOOGLE
+  GITHUB
+}
