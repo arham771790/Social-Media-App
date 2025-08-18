@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 4000;
 const httpServer = createServer(app);
 
 // Allow multiple origins via env (comma separated) — trim to avoid CORS mismatches
-const allowedOrigins = ("http://localhost:3000")
+const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000")
   .split(",")
   .map(s => s.trim())
   .filter(Boolean);
