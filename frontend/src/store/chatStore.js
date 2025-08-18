@@ -26,7 +26,7 @@ export const useChatStore = create((set, get) => ({
   fetchThreads: async () => {
   set({ loading: true, error: null });
   try {
-    const res = await api.get("/api/messages/threads");
+    const res = await api.get("/messages/threads");
 
     // backend usually returns { threads, totalUnread }
     const raw = res?.data ?? {};
@@ -73,7 +73,7 @@ export const useChatStore = create((set, get) => ({
 
   fetchUnreadTotal: async () => {
     try {
-      const { data } = await api.get("/api/messages/unread-count");
+      const { data } = await api.get("/messages/unread-count");
       const total = typeof data?.total === "number" ? data.total : 0;
       set({ totalUnread: total });
       return total;
@@ -97,7 +97,7 @@ export const useChatStore = create((set, get) => ({
 
     try {
       // server will also mark as read + emit 'messages:read'
-      const { data } = await api.get(`/api/messages/${chatGroupId}`);
+      const { data } = await api.get(`/messages/${chatGroupId}`);
       const items = Array.isArray(data?.items) ? data.items : [];
       const index = new Set(items.map(m => m.id));
       const pageInfo = data?.pageInfo || {};
@@ -130,7 +130,7 @@ export const useChatStore = create((set, get) => ({
 
   markRead: async (chatGroupId) => {
     try {
-      await api.put(`/api/messages/${chatGroupId}/read`);
+      await api.put(`/messages/${chatGroupId}/read`);
       set(s => ({
         threads: s.threads.map(t => (t.id === chatGroupId ? { ...t, unread: 0 } : t)),
       }));
@@ -181,7 +181,7 @@ export const useChatStore = create((set, get) => ({
     }));
 
     try {
-      const { data } = await api.post(`/api/messages/${chatGroupId}`, { content, mediaUrl, clientTempId });
+      const { data } = await api.post(`/messages/${chatGroupId}`, { content, mediaUrl, clientTempId });
       // reconcile even if socket echo is late/missed
       get()._reconcile(chatGroupId, data, clientTempId);
       return data;

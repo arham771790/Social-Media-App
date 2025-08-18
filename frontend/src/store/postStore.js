@@ -20,7 +20,7 @@ export const usePostStore = create((set, get) => ({
   createPost: async (payload) => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.post("/api/posts", payload);
+      const { data } = await api.post("/posts", payload);
 
       // put in single-post cache
       set((s) => ({ byId: { ...s.byId, [data.id]: data }, isLoading: false }));
@@ -61,7 +61,7 @@ export const usePostStore = create((set, get) => ({
   getPost: async (id) => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.get(`/api/posts/${id}`);
+      const { data } = await api.get(`/posts/${id}`);
       set((s) => ({
         byId: { ...s.byId, [id]: data },
         current: data,
@@ -80,7 +80,7 @@ export const usePostStore = create((set, get) => ({
    * ------------------------- */
   updatePost: async (id, payload) => {
     try {
-      const { data } = await api.put(`/api/posts/${id}`, payload);
+      const { data } = await api.put(`/posts/${id}`, payload);
 
       // 1) single-post cache + current
       set((s) => ({
@@ -106,7 +106,7 @@ export const usePostStore = create((set, get) => ({
    * ------------------------- */
   deletePost: async (id) => {
     try {
-      await api.delete(`/api/posts/${id}`);
+      await api.delete(`/posts/${id}`);
 
       // 1) remove from byId + current
       set((s) => {
@@ -131,7 +131,7 @@ export const usePostStore = create((set, get) => ({
    * ------------------------- */
   toggleLike: async (id) => {
     try {
-      const { data } = await api.post(`/api/posts/${id}/like`);
+      const { data } = await api.post(`/posts/${id}/like`);
 
       // single post & current
       set((s) => ({
@@ -160,7 +160,7 @@ export const usePostStore = create((set, get) => ({
 
   toggleBookmark: async (id) => {
     try {
-      const { data } = await api.post(`/api/posts/${id}/bookmark`);
+      const { data } = await api.post(`/posts/${id}/bookmark`);
       set((s) => ({
         byId: { ...s.byId, [id]: { ...s.byId[id], isBookmarked: data.isBookmarked } },
         current:
@@ -180,7 +180,7 @@ export const usePostStore = create((set, get) => ({
 
   replyToPost: async (id, payload) => {
     try {
-      const { data } = await api.post(`/api/posts/${id}/reply`, payload);
+      const { data } = await api.post(`/posts/${id}/reply`, payload);
       return data;
     } catch (err) {
       throw new Error(err?.response?.data?.error || "Failed to reply");
@@ -212,19 +212,19 @@ export const usePostStore = create((set, get) => ({
     }));
 
     // Try 3 shapes:
-    // 1) /api/posts/by-author/:id
-    // 2) /api/posts?author=:id
-    // 3) /api/posts?authorId=:id
+    // 1) /posts/by-author/:id
+    // 2) /posts?author=:id
+    // 3) /posts?authorId=:id
     let data;
     try {
-      const r1 = await api.get(`/api/posts/by-author/${authorId}`, { params: { page, limit } });
+      const r1 = await api.get(`/posts/by-author/${authorId}`, { params: { page, limit } });
       data = r1.data;
     } catch {
       try {
-        const r2 = await api.get(`/api/posts`, { params: { author: authorId, page, limit } });
+        const r2 = await api.get(`/posts`, { params: { author: authorId, page, limit } });
         data = r2.data;
       } catch {
-        const r3 = await api.get(`/api/posts`, { params: { authorId, page, limit } });
+        const r3 = await api.get(`/posts`, { params: { authorId, page, limit } });
         data = r3.data;
       }
     }

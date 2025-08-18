@@ -36,7 +36,7 @@ export const useAuthStore = create((set, get) => ({
   register: async ({ username, email, password }) => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.post("/api/auth/register", { username, email, password });
+      const { data } = await api.post("/auth/register", { username, email, password });
       if (typeof window !== "undefined") {
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
@@ -59,7 +59,7 @@ export const useAuthStore = create((set, get) => ({
   login: async ({ email, password }) => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.post("/api/auth/login", { email, password });
+      const { data } = await api.post("/auth/login", { email, password });
       if (typeof window !== "undefined") {
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
@@ -82,7 +82,7 @@ export const useAuthStore = create((set, get) => ({
   forgotPassword: async (email) => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.post("/api/auth/forgot-password", { email });
+      const { data } = await api.post("/auth/forgot-password", { email });
       set({ isLoading: false });
       return data; // { message }
     } catch (err) {
@@ -98,7 +98,7 @@ resetPassword: async ({ email, otp, newPassword }) => {
   set({ isLoading: true, error: null });
   try {
     // Backend expects: { email, otp, newPassword }
-    const { data } = await api.post("/api/auth/reset-password", {
+    const { data } = await api.post("/auth/reset-password", {
       email,
       otp,
       newPassword,
@@ -113,11 +113,11 @@ resetPassword: async ({ email, otp, newPassword }) => {
 },
 
 
-  // Refresh current user (/api/user/me)
+  // Refresh current user (/user/me)
   checkAuth: async () => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.get("/api/user/me");
+      const { data } = await api.get("/user/me");
       if (typeof window !== "undefined") {
         localStorage.setItem("user", JSON.stringify(data));
       }

@@ -1,11 +1,11 @@
 // src/store/userStore.js
 "use client";
 /**
- * User Store (matches /api/user router)
- * - Me:        GET/PUT /api/user/me
- * - Settings:  GET/PUT /api/user/me/settings
- * - Search:    GET     /api/user/search
- * - Public:    GET     /api/user/:id
+ * User Store (matches /user router)
+ * - Me:        GET/PUT /user/me
+ * - Settings:  GET/PUT /user/me/settings
+ * - Search:    GET     /user/search
+ * - Public:    GET     /user/:id
  */
 import { create } from "zustand";
 import api from "@/lib/axios";
@@ -24,7 +24,7 @@ export const useUserStore = create((set, get) => ({
   fetchMe: async () => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.get("/api/user/me");
+      const { data } = await api.get("/user/me");
       set({ me: data, isLoading: false });
       return data;
     } catch (err) {
@@ -38,7 +38,7 @@ export const useUserStore = create((set, get) => ({
     // backend accepts: { avatar?, bio?, isPublic? }
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.put("/api/user/me", payload);
+      const { data } = await api.put("/user/me", payload);
       set((s) => ({ me: { ...(s.me || {}), ...data }, isLoading: false }));
       return data;
     } catch (err) {
@@ -53,7 +53,7 @@ export const useUserStore = create((set, get) => ({
     if (!id) return null;
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.get(`/api/user/${id}`);
+      const { data } = await api.get(`/user/${id}`);
       // data includes: id, username, avatar, bio, isPublic, _count{followers,following,posts}, followStatus, isOnline, lastSeen
       set({ selectedUser: data, isLoading: false });
       return data;
@@ -64,7 +64,7 @@ export const useUserStore = create((set, get) => ({
     }
   },
 
-  // Resolve username -> id via /api/user/search, then fetch profile
+  // Resolve username -> id via /user/search, then fetch profile
   getIdByUsername: async (username) => {
     if (!username) return null;
     const res = await get().searchUsers({ q: username, page: 1, limit: 1 });
@@ -83,7 +83,7 @@ export const useUserStore = create((set, get) => ({
   searchUsers: async ({ q, page = 1, limit = 20 }) => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.get(`/api/user/search`, { params: { q, page, limit } });
+      const { data } = await api.get(`/user/search`, { params: { q, page, limit } });
       set({
         searchResults: data.users || [],
         searchPagination: data.pagination || { page, limit, total: 0, pages: 0 },
@@ -101,7 +101,7 @@ export const useUserStore = create((set, get) => ({
   fetchSettings: async () => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.get("/api/user/me/settings");
+      const { data } = await api.get("/user/me/settings");
       set({ settings: data, isLoading: false });
       return data;
     } catch (err) {
@@ -114,7 +114,7 @@ export const useUserStore = create((set, get) => ({
   updateSettings: async (payload) => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.put("/api/user/me/settings", payload);
+      const { data } = await api.put("/user/me/settings", payload);
       set({ settings: data, isLoading: false });
       return data;
     } catch (err) {

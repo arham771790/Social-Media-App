@@ -1,10 +1,10 @@
 "use client";
 /**
  * Comment Store (matches controller)
- * - GET /api/posts/:postId/comments?mode=flat|tree&page&limit
- * - POST /api/posts/:postId/comments { content, parentId? }
- * - DELETE /api/comments/:id
- * - GET /api/comments/:id/replies?page&limit&order
+ * - GET /posts/:postId/comments?mode=flat|tree&page&limit
+ * - POST /posts/:postId/comments { content, parentId? }
+ * - DELETE /comments/:id
+ * - GET /comments/:id/replies?page&limit&order
  *
  * Notes:
  * - Default mode is "flat" to align with feed-style lists + pagination.
@@ -46,7 +46,7 @@ export const useCommentStore = create((set, get) => ({
 
     try {
       const params = { page, limit, mode };
-      const { data } = await api.get(`/api/posts/${postId}/comments`, { params });
+      const { data } = await api.get(`/posts/${postId}/comments`, { params });
 
       // Controller returns:
       // - mode=flat -> { comments, pagination }
@@ -109,7 +109,7 @@ export const useCommentStore = create((set, get) => ({
         throw new Error("Comment cannot be empty");
       }
 
-      const { data } = await api.post(`/api/posts/${postId}/comments`, body);
+      const { data } = await api.post(`/posts/${postId}/comments`, body);
       // data: created comment { id, content, author, createdAt, parentId? }
 
       set((s) => {
@@ -177,7 +177,7 @@ export const useCommentStore = create((set, get) => ({
    */
   deleteComment: async (commentId, postId) => {
     try {
-      await api.delete(`/api/comments/${commentId}`);
+      await api.delete(`/comments/${commentId}`);
 
       set((s) => {
         const bucket = s.byPost[postId];
@@ -219,12 +219,12 @@ export const useCommentStore = create((set, get) => ({
 
   /**
    * Fetch direct replies for a comment (useful when lazy-loading threads)
-   * -> GET /api/comments/:id/replies?page&limit&order
+   * -> GET /comments/:id/replies?page&limit&order
    * Returns { replies, parentCommentId, pagination }
    */
   fetchReplies: async (commentId, { page = 1, limit = 20, order = "asc", postId } = {}) => {
     try {
-      const { data } = await api.get(`/api/comments/${commentId}/replies`, {
+      const { data } = await api.get(`/comments/${commentId}/replies`, {
         params: { page, limit, order },
       });
 

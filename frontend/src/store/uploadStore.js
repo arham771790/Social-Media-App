@@ -13,8 +13,8 @@ export const useUploadStore = create((set) => ({
       const form = new FormData();
       form.append("file", file);
 
-      // MUST match the mount: /api/upload/file
-      const { data } = await api.post("/api/upload/file", form, {
+      // MUST match the mount: /upload/file
+      const { data } = await api.post("/upload/file", form, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 

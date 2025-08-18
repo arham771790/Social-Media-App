@@ -15,7 +15,7 @@ export const useNotificationStore = create((set, get) => ({
   fetchNotifications: async ({ page = 1, limit = 20 } = {}) => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.get("/api/notifications", { params: { page, limit } });
+      const { data } = await api.get("/notifications", { params: { page, limit } });
       const list = Array.isArray(data) ? data : (data.notifications || []);
       const pag  = data.pagination || { page, limit, total: list.length, pages: 1 };
 
@@ -39,7 +39,7 @@ export const useNotificationStore = create((set, get) => ({
   // Mark one as read
   markRead: async (id) => {
     try {
-      await api.post(`/api/notifications/${id}/read`);
+      await api.post(`/notifications/${id}/read`);
     } catch {} // don't block UI if API shape differs
     set((s) => {
       const items = s.items.map(n => n.id === id ? { ...n, read: true } : n);
@@ -52,8 +52,8 @@ export const useNotificationStore = create((set, get) => ({
   markAllRead: async () => {
     try {
       // Accept either of these:
-      await api.post("/api/notifications/mark-all-read")
-        .catch(() => api.post("/api/notifications/read-all"));
+      await api.post("/notifications/mark-all-read")
+        .catch(() => api.post("/notifications/read-all"));
     } catch {}
     set((s) => ({
       items: s.items.map(n => ({ ...n, read: true })),

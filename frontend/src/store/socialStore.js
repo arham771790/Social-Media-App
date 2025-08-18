@@ -15,7 +15,7 @@ export const useSocialStore = create((set, get) => ({
   followUser: async (userId) => {
     set(s => ({ followPending: { ...s.followPending, [userId]: true } }));
     try {
-      const { data } = await api.post(`/api/social/users/${userId}/follow`);
+      const { data } = await api.post(`/social/users/${userId}/follow`);
       // data: { status: 'ACCEPTED'|'PENDING', isFollowing, isPending }
       return data;
     } catch (e) {
@@ -30,7 +30,7 @@ export const useSocialStore = create((set, get) => ({
   unfollowUser: async (userId) => {
     set(s => ({ followPending: { ...s.followPending, [userId]: true } }));
     try {
-      await api.post(`/api/social/users/${userId}/unfollow`);
+      await api.post(`/social/users/${userId}/unfollow`);
       return true;
     } catch (e) {
       const msg = e?.response?.data?.error || 'Failed to unfollow';
@@ -50,7 +50,7 @@ export const useSocialStore = create((set, get) => ({
       }
     }));
     try {
-      const { data } = await api.get(`/api/social/users/${userId}/followers`, { params: { page, limit } });
+      const { data } = await api.get(`/social/users/${userId}/followers`, { params: { page, limit } });
       set(s => ({
         followersByUser: {
           ...s.followersByUser,
@@ -84,7 +84,7 @@ export const useSocialStore = create((set, get) => ({
       }
     }));
     try {
-      const { data } = await api.get(`/api/social/users/${userId}/following`, { params: { page, limit } });
+      const { data } = await api.get(`/social/users/${userId}/following`, { params: { page, limit } });
       set(s => ({
         followingByUser: {
           ...s.followingByUser,
@@ -115,7 +115,7 @@ export const useSocialStore = create((set, get) => ({
     const key = direction === 'outgoing' ? 'requestsOutgoing' : 'requestsIncoming';
     set(s => ({ [key]: { ...(s[key] || {}), isLoading: true } }));
     try {
-      const { data } = await api.get('/api/social/requests', { params: { direction, page, limit } });
+      const { data } = await api.get('/social/requests', { params: { direction, page, limit } });
       set({
         [key]: {
           items: data.items || [],
@@ -136,13 +136,13 @@ export const useSocialStore = create((set, get) => ({
   },
 
   acceptFollowRequest: async (followerId) => {
-    await api.post(`/api/social/requests/${followerId}/accept`);
+    await api.post(`/social/requests/${followerId}/accept`);
     // refresh incoming
     await get().getFollowRequests('incoming', { page: 1, limit: 20 });
   },
 
   declineFollowRequest: async (followerId) => {
-    await api.post(`/api/social/requests/${followerId}/decline`);
+    await api.post(`/social/requests/${followerId}/decline`);
     // refresh incoming
     await get().getFollowRequests('incoming', { page: 1, limit: 20 });
   },

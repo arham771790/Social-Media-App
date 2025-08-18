@@ -13,7 +13,7 @@ export const useFeedStore = create((set, get) => ({
   fetchHome: async ({ page = 1, limit = 10 } = {}) => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.get(`/api/feed?page=${page}&limit=${limit}`);
+      const { data } = await api.get(`/feed?page=${page}&limit=${limit}`);
       set({
         home: page === 1 ? data.posts : [...get().home, ...data.posts],
         pagination: { ...get().pagination, home: data.pagination },
@@ -32,7 +32,7 @@ export const useFeedStore = create((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const q = `page=${page}&limit=${limit}${tag ? `&tag=${encodeURIComponent(tag)}` : ""}`;
-      const { data } = await api.get(`/api/posts/explore?${q}`);
+      const { data } = await api.get(`/posts/explore?${q}`);
       set({
         explore: page === 1 ? data.posts : [...get().explore, ...data.posts],
         pagination: { ...get().pagination, explore: data.pagination },
