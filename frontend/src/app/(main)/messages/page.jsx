@@ -8,7 +8,7 @@ import ConversationList from "@/components/messages/ConversationList";
 import ChatHeader from "@/components/messages/ChatHeader";
 import MessageList from "@/components/messages/MessageList";
 import Composer from "@/components/messages/Composer";
-import NewMessageDialog from "@/components/messages/dialogs/NewMessageDialog"; // ⬅️ import
+import NewMessageDialog from "@/components/messages/dialogs/NewMessageDialog";
 
 export default function MessagesPage() {
   const { token, user } = useAuthStore();
@@ -23,23 +23,22 @@ export default function MessagesPage() {
   } = useChatStore();
 
   const [activeId, setActiveId] = useState(null);
-  const [newOpen, setNewOpen] = useState(false); // ⬅️ control dialog
+  const [newOpen, setNewOpen] = useState(false);
 
   useEffect(() => {
     if (!token) return;
     bindSocket(ioClient, token);
     fetchThreads().then((ts) => {
-      // if no threads at all, auto-open the dialog once
       if (!ts?.length) setNewOpen(true);
       if (!activeId && ts?.length) setActiveId(ts[0].id);
     });
-  }, [token]);
+  }, [token]); // eslint-disable-line
 
   useEffect(() => {
     if (!activeId) return;
     fetchMessages(activeId).then(() => markRead(activeId)).catch(() => {});
     joinRoom(activeId);
-  }, [activeId]);
+  }, [activeId]); // eslint-disable-line
 
   const activeThread = useMemo(
     () => threads.find((t) => t.id === activeId),
@@ -49,14 +48,17 @@ export default function MessagesPage() {
 
   return (
     <>
-      <div className="h-[calc(100vh-64px)] max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-[20rem_1fr] border rounded-lg overflow-hidden">
+      {/* min-h-0 here lets children own the scrolling */}
+      <div className="h-[calc(100vh-64px)] max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-[20rem_1fr] border rounded-lg overflow-hidden min-h-0">
         <ConversationList
           threads={threads}
           activeId={activeId}
           onPick={setActiveId}
-          onNew={() => setNewOpen(true)}        // ⬅️ open dialog
+          onNew={() => setNewOpen(true)}
         />
-        <div className="flex flex-col">
+
+        {/* make this column a flex + min-h-0 so MessageList can scroll */}
+        <div className="flex flex-col min-h-0">
           <ChatHeader thread={activeThread} />
           {activeId ? (
             <>
@@ -71,7 +73,6 @@ export default function MessagesPage() {
         </div>
       </div>
 
-      {/* New chat dialog */}
       <NewMessageDialog
         open={newOpen}
         onOpenChange={setNewOpen}

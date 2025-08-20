@@ -4,11 +4,12 @@ import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import jwt from "jsonwebtoken";
 import prisma from "./utils/db.js"; // for membership checks
-
+import cors from "cors";
 const PORT = process.env.PORT || 4000;
 const httpServer = createServer(app);
 
 // Allow multiple origins via env (comma separated) — trim to avoid CORS mismatches
+
 const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000")
   .split(",")
   .map(s => s.trim())

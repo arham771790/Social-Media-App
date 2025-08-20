@@ -7,14 +7,14 @@ export default function ConversationList({ threads, activeId, onPick, onNew }) {
   const hasThreads = threads?.length > 0;
 
   return (
-    <aside className="w-full md:w-80 border-r border-border">
+    <aside className="w-full md:w-80 border-r border-border flex flex-col h-full min-h-0">
       <div className="px-4 py-3 flex items-center justify-between">
         <div className="text-lg font-semibold">Chats</div>
         <Button size="sm" variant="secondary" onClick={onNew}>New</Button>
       </div>
 
       {hasThreads ? (
-        <ul className="divide-y divide-border">
+        <ul className="divide-y divide-border flex-1 overflow-y-auto">
           {threads.map((t) => {
             const name = t.name || "Unknown";
             return (

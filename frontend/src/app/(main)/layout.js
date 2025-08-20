@@ -23,9 +23,7 @@ export default function MainLayout({ children }) {
               {/* Center */}
               <main className="flex-1 max-w-2xl mx-auto px-4 py-6">
                 {/* Create Post shows once (desktop) */}
-                <div className="mb-6">
-                  <CreatePost />
-                </div>
+                
 
                 {children}
               </main>

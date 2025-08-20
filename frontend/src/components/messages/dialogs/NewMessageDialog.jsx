@@ -12,17 +12,6 @@ import api from "@/lib/axios";
 import { useChatStore } from "@/store/chatStore";
 import { useAuthStore } from "@/store/authStore";
 
-/**
- * NewMessageDialog
- * - Searches messageable users (public, not self) via GET /api/messages/users?search=
- * - Creates a DIRECT chat via POST /api/messages/direct { targetUserId }
- * - Refreshes threads and optionally notifies parent with onCreated(chatId)
- *
- * Props:
- *   open: boolean
- *   onOpenChange: (open:boolean) => void
- *   onCreated?: (chatId:string) => void   // optional; parent can set active chat
- */
 export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
   const router = useRouter();
   const me = useAuthStore((s) => s.user);
@@ -34,11 +23,9 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
   const [users, setUsers] = useState([]);
   const [error, setError] = useState(null);
 
-  // Debounce search
   const q = query.trim();
   const debounced = useDebouncedValue(q, 300);
 
-  // Load initial suggestions (empty search = top public users)
   useEffect(() => {
     if (!open) return;
     setUsers([]);
@@ -50,10 +37,7 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
         const arr = Array.isArray(res?.data) ? res.data : [];
         setUsers(arr);
       })
-      .catch((e) => {
-        const msg = e?.response?.data?.error || "Failed to load users";
-        setError(msg);
-      })
+      .catch((e) => setError(e?.response?.data?.error || "Failed to load users"))
       .finally(() => setLoading(false));
   }, [open, debounced]);
 
@@ -64,17 +48,12 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
     try {
       const { data } = await api.post("/api/messages/direct", { targetUserId: userId });
       const chatId = data?.chatGroup?.id;
-      await fetchThreads(); // refresh sidebar
+      await fetchThreads();
       onOpenChange?.(false);
-      if (typeof onCreated === "function" && chatId) {
-        onCreated(chatId);
-      } else if (chatId) {
-        // Fallback: go to /messages and let page pick it up however you prefer
-        router.push("/messages");
-      }
+      if (typeof onCreated === "function" && chatId) onCreated(chatId);
+      else if (chatId) router.push("/messages");
     } catch (e) {
-      const msg = e?.response?.data?.error || "Failed to start chat";
-      setError(msg);
+      setError(e?.response?.data?.error || "Failed to start chat");
     } finally {
       setBusy(false);
     }
@@ -124,16 +103,11 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
                     </Avatar>
                     <div className="min-w-0">
                       <div className="font-medium truncate">@{u.username}</div>
-                      {u.bio && (
-                        <div className="text-xs text-muted-foreground truncate max-w-[220px]">{u.bio}</div>
-                      )}
+                      {u.bio && <div className="text-xs text-muted-foreground truncate max-w-[220px]">{u.bio}</div>}
                     </div>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => onStartDM(u.id)}
-                    disabled={busy || u.id === me?.id}
-                  >
+                  <Button size="sm" onClick={() => onStartDM(u.id)} disabled={busy || u.id === me?.id}>
+                    {busy ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                     Message
                   </Button>
                 </li>
@@ -143,16 +117,14 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
         </div>
 
         <DialogFooter>
-          <Button variant="secondary" onClick={() => onOpenChange?.(false)}>
-            Close
-          </Button>
+          <Button variant="secondary" onClick={() => onOpenChange?.(false)}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
   );
 }
 
-/** Small debounce hook so we don’t spam the server on every keypress */
+/** Debounce helper */
 function useDebouncedValue(value, delay = 300) {
   const [val, setVal] = useState(value);
   const tRef = useRef(null);

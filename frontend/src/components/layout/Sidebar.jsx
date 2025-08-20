@@ -13,6 +13,7 @@ import {
   Settings,
   LogOut,
   Menu,
+  Compass,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -33,6 +34,7 @@ const navigationItems = [
   { name: 'Search', href: '/search', icon: Search },
   { name: 'Messages', href: '/messages', icon: MessageCircle },
   { name: 'Notifications', href: '/notifications', icon: Heart },
+  { name: 'Explore', href: '/explore', icon: Compass },
   { name: 'Create', href: '/create', icon: PlusSquare },
   { name: 'Profile', href: '/profile', icon: User },
 ];

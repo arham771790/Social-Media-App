@@ -28,8 +28,8 @@ router.post("/requests/:followerId/accept", acceptFollowRequest);
 router.post("/requests/:followerId/decline", declineFollowRequest);
 
 // lists
-router.get("/:id/followers", getFollowers);
-router.get("/:id/following", getFollowing);
+router.get("/users/:id/followers", getFollowers);
+router.get("/users/:id/following", getFollowing);
 
 // contacts (optional)
 router.get("/contacts", getContacts);

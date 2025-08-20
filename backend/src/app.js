@@ -30,7 +30,7 @@ dotenv.config();
 const app = express();
 
 // --- CORS (from env, comma-separated) ---
-const origins = (process.env.CORS_ORIGIN || 'http://localhost:3000').split(',');
+const origins = ('http://localhost:3000').split(',');
 app.use(cors({ origin: origins, credentials: true }));
 
 // --- JSON parsing (cap size; multer handles files) ---
