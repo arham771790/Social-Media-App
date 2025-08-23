@@ -21,10 +21,12 @@ export const useChatStore = create((set, get) => ({
   socket: null,
   isLoading: false,
   error: null,
+  typingUsers: {},             // { [chatGroupId]: { [userId]: { username, timestamp } } }
+  onlineUsers: new Set(),      // Set of online user IDs
 
   /* --------- THREADS / COUNTS --------- */
   fetchThreads: async () => {
-  set({ loading: true, error: null });
+  set({ isLoading: true, error: null });
   try {
     const res = await api.get("/messages/threads");
 
@@ -55,7 +57,7 @@ export const useChatStore = create((set, get) => ({
     set({
       threads: sortedThreads,                 // ✅ correct key
       totalUnread: raw?.totalUnread ?? 0,     // ✅ header badge
-      loading: false,
+      isLoading: false,
     });
 
     return sortedThreads;
@@ -65,7 +67,7 @@ export const useChatStore = create((set, get) => ({
     const msg =
       body?.error || body?.message || err?.message || "Failed to get chat threads";
     console.error("fetchThreads error:", status, body || msg);
-    set({ error: msg, loading: false });
+    set({ error: msg, isLoading: false });
     throw new Error(msg);
   }
 },
@@ -286,22 +288,105 @@ export const useChatStore = create((set, get) => ({
       // update a global notifications badge if you have one
       // console.log("notifications:unread", unread);
     });
+      set(s => ({ onlineUsers: new Set([...s.onlineUsers, userId]) }));
 
     socket.on("presence:online", ({ userId }) => {});
+      set(s => {
+        const next = new Set(s.onlineUsers);
+        next.delete(userId);
+        return { onlineUsers: next };
+      });
     socket.on("presence:offline", ({ userId }) => {});
-    socket.on("typing:start", ({ userId, roomId }) => {});
-    socket.on("typing:stop",  ({ userId, roomId }) => {});
+    
+    // Typing indicators
+    socket.on("typing:start", ({ userId, roomId, username }) => {
+      set(s => ({
+        typingUsers: {
+          ...s.typingUsers,
+          [roomId]: {
+            ...(s.typingUsers[roomId] || {}),
+            [userId]: { username: username || 'Someone', timestamp: Date.now() }
+          }
+        }
+      }));
+    });
+    
+    socket.on("typing:stop", ({ userId, roomId }) => {
+      set(s => {
+        const roomTyping = { ...(s.typingUsers[roomId] || {}) };
+        delete roomTyping[userId];
+        return {
+          typingUsers: { ...s.typingUsers, [roomId]: roomTyping }
+        };
+      });
+    });
+    
     socket.on("connect_error", (err) => console.error("socket error", err?.message || err));
 
     set({ socket });
   },
 
+  // Typing indicators
+  startTyping: (chatGroupId) => {
+    const { socket } = get();
+    const me = useAuthStore.getState()?.user;
+    if (socket && chatGroupId && me) {
+      socket.emit("typing:start", { 
+        roomId: chatGroupId, 
+        userId: me.id, 
+        username: me.username 
+      });
+    }
+  },
+
+  stopTyping: (chatGroupId) => {
+    const { socket } = get();
+    const me = useAuthStore.getState()?.user;
+    if (socket && chatGroupId && me) {
+      socket.emit("typing:stop", { 
+        roomId: chatGroupId, 
+        userId: me.id 
+      });
+    }
+  },
+
+  getTypingUsers: (chatGroupId) => {
+    const typing = get().typingUsers[chatGroupId] || {};
+    const me = useAuthStore.getState()?.user;
+    const now = Date.now();
+    
+    // Filter out expired typing (>3 seconds) and self
+    return Object.entries(typing)
+      .filter(([userId, data]) => 
+        userId !== me?.id && 
+        (now - data.timestamp) < 3000
+      )
+      .map(([userId, data]) => data.username);
+  },
   joinRoom: (chatGroupId) => {
     const { socket, joinedRooms } = get();
     if (!socket || !chatGroupId || joinedRooms.has(chatGroupId)) return;
     socket.emit("room:join", { chatGroupId });
     const next = new Set(joinedRooms); next.add(chatGroupId);
     set({ joinedRooms: next });
+  },
+
+  // Clean up expired typing indicators
+  cleanupTyping: () => {
+    const now = Date.now();
+    set(s => {
+      const typingUsers = { ...s.typingUsers };
+      Object.keys(typingUsers).forEach(roomId => {
+        const roomTyping = { ...typingUsers[roomId] };
+        Object.keys(roomTyping).forEach(userId => {
+          if (now - roomTyping[userId].timestamp > 3000) {
+            delete roomTyping[userId];
+          }
+        });
+        typingUsers[roomId] = roomTyping;
+      });
+      return { typingUsers };
+    });
   },
 }));
 
