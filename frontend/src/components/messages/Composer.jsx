@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // src/components/messages/Composer.jsx
 "use client";
 
@@ -99,3 +100,6 @@ export default function Composer({ chatGroupId, className = "" }) {
     </form>
   );
 }
+=======
+{"code":"rate-limited","message":"You have hit the rate limit. Please upgrade to keep chatting.","providerLimitHit":false,"isRetryable":true}
+>>>>>>> e99ab674b2d5de3d577bf414f0a6c2e271967d2c
