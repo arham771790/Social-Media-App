@@ -1,141 +1,100 @@
 // src/components/messages/Composer.jsx
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { Send, Paperclip, X, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Send, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useChatStore } from "@/store/chatStore";
 import { useUploadStore } from "@/store/uploadStore";
-import { cn } from "@/lib/utils";
 
-function detectKind(file) {
-  if (!file) return "file";
-  const t = file.type.toLowerCase();
-  if (t.startsWith("image/")) return "image";
-  if (t.startsWith("video/")) return "video";
-  return "file";
-}
-
-export default function Composer({ chatGroupId }) {
+export default function Composer({ chatGroupId, className = "" }) {
   const sendMessage = useChatStore((s) => s.sendMessage);
+  const sendTyping = useChatStore((s) => s.sendTyping);
   const uploadFile = useUploadStore((s) => s.uploadFile);
-  const isUploading = useUploadStore((s) => s.isUploading);
 
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState("");
-  const fileInputRef = useRef(null);
+  const [preview, setPreview] = useState("");
 
-  const kind = useMemo(() => detectKind(file), [file]);
-  const canSend = (text.trim().length > 0 || !!file) && !busy && !isUploading;
+  const typingTimer = useRef(null);
 
-  const pickFile = (e) => {
+  const onTyping = () => {
+    clearTimeout(typingTimer.current);
+    sendTyping(chatGroupId, true);
+    typingTimer.current = setTimeout(() => sendTyping(chatGroupId, false), 1200);
+  };
+
+  const handleFile = async (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
     setFile(f);
-    setPreviewUrl(URL.createObjectURL(f));
-  };
-
-  const clearFile = () => {
-    setFile(null);
-    setPreviewUrl("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
-
-  const actuallySend = async () => {
-    // 1) upload if we have an attachment
-    let mediaUrl = null;
-    if (file) {
-      const uploaded = await uploadFile(file); // returns { originalUrl, optimizedUrl, ... }
-      mediaUrl = uploaded?.optimizedUrl || uploaded?.originalUrl;
-    }
-
-    // 2) send message (text and/or media). Backend infers type from mediaUrl.
-    await sendMessage(chatGroupId, {
-      content: text.trim() || null,
-      mediaUrl: mediaUrl || null,
-    });
+    setPreview(URL.createObjectURL(f));
   };
 
   const submit = async (e) => {
-    e?.preventDefault();
-    if (!canSend) return;
-    setBusy(true);
+    e.preventDefault();
+    if (busy) return;
+
     try {
-      await actuallySend();
-      // reset UI
-      setText("");
-      clearFile();
+      setBusy(true);
+      if (file) {
+        const uploaded = await uploadFile(file);
+        const mediaUrl = uploaded.optimizedUrl || uploaded.originalUrl;
+        await sendMessage(chatGroupId, { mediaUrl });
+        setFile(null);
+        setPreview("");
+      }
+      const val = text.trim();
+      if (val) {
+        await sendMessage(chatGroupId, { content: val });
+        setText("");
+      }
     } finally {
       setBusy(false);
+      sendTyping(chatGroupId, false);
     }
   };
 
+  useEffect(() => () => clearTimeout(typingTimer.current), []);
+
   return (
-    <form onSubmit={submit} className="border-t border-border px-3 py-2 flex items-center gap-2">
-      {/* Attachment preview row */}
-      {(previewUrl || isUploading) && (
-        <div className="absolute bottom-[60px] left-0 right-0 px-3">
-          <div className="mx-3 mb-2 rounded-lg border bg-card p-2 flex items-center gap-3">
-            <div className="shrink-0">
-              {kind === "image" && <img src={previewUrl} alt="preview" className="w-20 h-20 object-cover rounded" />}
-              {kind === "video" && (
-                <video src={previewUrl} className="w-24 h-20 object-cover rounded" muted playsInline controls />
-              )}
-              {kind === "file" && (
-                <div className="w-24 h-20 grid place-items-center bg-muted rounded text-xs">
-                  {file?.name || "Attachment"}
-                </div>
-              )}
-            </div>
-
-            <div className="min-w-0 flex-1 text-xs">
-              <div className="truncate">{file?.name}</div>
-              <div className={cn("mt-1", isUploading ? "text-blue-500" : "text-muted-foreground")}>
-                {isUploading ? "Uploading…" : kind === "file" ? "Ready to send" : "Ready to send"}
-              </div>
-            </div>
-
-            <Button
-              type="button"
-              size="icon"
-              variant="ghost"
-              className="shrink-0"
-              onClick={clearFile}
-              disabled={busy || isUploading}
-              title="Remove attachment"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
+    <form
+      onSubmit={submit}
+      className={`flex items-center gap-2 p-2 sm:p-3 ${className}`}
+    >
+      {preview && (
+        <div className="flex items-center gap-3 px-2 py-1 rounded bg-muted/40 mr-auto">
+          {file?.type?.startsWith("video") ? (
+            <video src={preview} className="h-14 sm:h-16 rounded" muted playsInline />
+          ) : (
+            <img src={preview} className="h-14 sm:h-16 rounded" alt="preview" />
+          )}
+          <Button type="button" size="icon" variant="ghost" onClick={() => { setFile(null); setPreview(""); }}>
+            <X className="w-4 h-4" />
+          </Button>
         </div>
       )}
 
-      <label className="cursor-pointer p-2 hover:bg-muted rounded relative">
+      <label className="cursor-pointer p-2 rounded hover:bg-muted shrink-0">
         <Paperclip className="w-4 h-4" />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,video/*"
-          className="hidden"
-          onChange={pickFile}
-          disabled={busy || isUploading}
-        />
+        <input type="file" className="hidden" onChange={handleFile} accept="image/*,video/*" />
       </label>
 
       <Input
         value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={isUploading ? "Uploading attachment…" : busy ? "Sending…" : "Message…"}
-        className="flex-1"
-        disabled={busy || isUploading}
+        onChange={(e) => { setText(e.target.value); onTyping(); }}
+        placeholder="Message…"
+        className="flex-1 text-sm"
+        onFocus={() => sendTyping(chatGroupId, true)}
+        onBlur={() => sendTyping(chatGroupId, false)}
+        disabled={busy}
       />
 
-      <Button type="submit" disabled={!canSend}>
-        {(busy || isUploading) ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Send className="w-4 h-4 mr-1" />}
-        {(busy || isUploading) ? "Sending…" : "Send"}
+      <Button type="submit" className="shrink-0" disabled={busy || (!text.trim() && !file)}>
+        <Send className="w-4 h-4 mr-1" />
+        <span className="hidden sm:inline">{busy ? "Sending…" : "Send"}</span>
       </Button>
     </form>
   );

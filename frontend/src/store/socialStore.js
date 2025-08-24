@@ -30,7 +30,7 @@ export const useSocialStore = create((set, get) => ({
   unfollowUser: async (userId) => {
     set(s => ({ followPending: { ...s.followPending, [userId]: true } }));
     try {
-      await api.post(`/social/users/${userId}/unfollow`);
+      await api.delete(`/social/users/${userId}/unfollow`);
       return true;
     } catch (e) {
       const msg = e?.response?.data?.error || 'Failed to unfollow';

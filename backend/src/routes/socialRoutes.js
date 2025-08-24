@@ -19,8 +19,8 @@ const router = express.Router();
 router.use(auth);
 
 // follow / unfollow
-router.post("/follow/:id", followUser);
-router.delete("/follow/:id", unfollowUser);
+router.post("/users/:id/follow", followUser);
+router.delete("/users/:id/unfollow", unfollowUser);
 
 // requests
 router.get("/requests", getFollowRequests);                   // ?direction=incoming|outgoing

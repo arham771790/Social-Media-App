@@ -4,39 +4,50 @@ import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import jwt from "jsonwebtoken";
 import prisma from "./utils/db.js"; // for membership checks
-import cors from "cors";
+
 const PORT = process.env.PORT || 4000;
+
+// ----- Create HTTP server -----
 const httpServer = createServer(app);
 
-// Allow multiple origins via env (comma separated) — trim to avoid CORS mismatches
-
-const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:3000")
+// ----- Allowed origins (shared format with app.js) -----
+const allowedOrigins = ("http://localhost:3000" || process.env.CORS_ORIGINS)
   .split(",")
   .map(s => s.trim())
   .filter(Boolean);
 
+// ----- Socket.IO -----
 export const io = new SocketIOServer(httpServer, {
   cors: { origin: allowedOrigins, credentials: true },
-  // Heartbeat tuning (optional but helpful for stale connections)
   pingInterval: 25000,
   pingTimeout: 20000,
 });
 
+/*
+// (Optional) Multi-instance scaling via Redis adapter
+import { createAdapter } from "@socket.io/redis-adapter";
+import { createClient } from "redis";
+const pub = createClient({ url: process.env.REDIS_URL });
+const sub = pub.duplicate();
+await pub.connect(); await sub.connect();
+io.adapter(createAdapter(pub, sub));
+*/
+
 // -------- Presence tracking --------
 // Support multiple tabs/devices per user.
-// Internally: userId -> Set<socketId>
-// Kept for back-compat: userSocketMap (last socketId)
+// userId -> Set<socketId>
 const userSockets = new Map();
-export const userSocketMap = new Map(); // userId -> last socketId (legacy export)
+// Keep last-known socketId (legacy helper export)
+export const userSocketMap = new Map(); // userId -> last socketId
 
-// Utility: add/remove presence
 function addPresence(userId, socketId) {
   const set = userSockets.get(userId) || new Set();
   set.add(socketId);
   userSockets.set(userId, set);
-  userSocketMap.set(userId, socketId); // keep last one
+  userSocketMap.set(userId, socketId);
   if (set.size === 1) io.emit("presence:online", { userId }); // first connection → online
 }
+
 function removePresence(userId, socketId) {
   const set = userSockets.get(userId);
   if (!set) return;
@@ -46,19 +57,19 @@ function removePresence(userId, socketId) {
     userSocketMap.delete(userId);
     io.emit("presence:offline", { userId }); // last connection closed → offline
   } else {
-    // refresh last socket reference
-    const [any] = set;
+    // refresh last socket reference (pick any remaining)
+    const any = set.values().next().value;
     userSocketMap.set(userId, any);
   }
 }
 
-// Export a helper controllers can reuse
+// Helper other modules can use
 export function isUserOnline(userId) {
   const set = userSockets.get(String(userId));
   return !!(set && set.size > 0);
 }
 
-// ---- Socket auth middleware (same JWT as your HTTP auth) ----
+// ---- Socket auth middleware (expects auth: { token }) ----
 io.use((socket, next) => {
   const { token } = socket.handshake.auth || {};
   if (!token) return next(new Error("unauthorized"));
@@ -97,6 +108,8 @@ io.on("connection", (socket) => {
   const userId = socket.data.userId;
   if (!userId) return socket.disconnect(true);
 
+  // console.log("[io] connected", { userId, sid: socket.id }); // (optional) debug
+
   // Presence + per-user room (used for notifications)
   addPresence(userId, socket.id);
   socket.join(`user:${userId}`);
@@ -109,7 +122,10 @@ io.on("connection", (socket) => {
 
     // Guard membership to avoid unauthorized snooping
     const allowed = await ensureMembership(rid, userId);
-    if (!allowed) return ack?.({ ok: false, error: "forbidden" });
+    if (!allowed) {
+      // console.warn("[io] forbidden join", { userId, rid }); // (optional) debug
+      return ack?.({ ok: false, error: "forbidden" });
+    }
 
     socket.join(rid);
     return ack?.({ ok: true });
@@ -139,17 +155,25 @@ io.on("connection", (socket) => {
 
   // Typing UX (room-scoped)
   socket.on("typing:start", ({ roomId, userId: uid }) => {
-    if (roomId) socket.to(String(roomId)).emit("typing:start", { userId: uid || userId });
+    if (roomId) socket.to(String(roomId)).emit("typing:start", {
+      roomId: String(roomId),
+      userId: uid || userId
+    });
   });
   socket.on("typing:stop",  ({ roomId, userId: uid }) => {
-    if (roomId) socket.to(String(roomId)).emit("typing:stop",  { userId: uid || userId });
+    if (roomId) socket.to(String(roomId)).emit("typing:stop", {
+      roomId: String(roomId),
+      userId: uid || userId
+    });
   });
 
-  socket.on("disconnect", () => {
+  socket.on("disconnect", (reason) => {
+    // console.log("[io] disconnected", { userId, sid: socket.id, reason }); // (optional) debug
     removePresence(userId, socket.id);
   });
 });
 
+// ----- Start server -----
 httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
