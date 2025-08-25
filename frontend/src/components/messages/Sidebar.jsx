@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { useChatStore } from "@/store/chatStore";
+import { useChatStore } from "@/store/messageStore";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";

@@ -1,17 +1,16 @@
-<<<<<<< HEAD
-// src/components/messages/Composer.jsx
 "use client";
 
 import { useEffect, useRef, useState } from "react";
 import { Send, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useChatStore } from "@/store/chatStore";
+import { useMessageStore } from "@/store/messageStore";
 import { useUploadStore } from "@/store/uploadStore";
 
 export default function Composer({ chatGroupId, className = "" }) {
-  const sendMessage = useChatStore((s) => s.sendMessage);
-  const sendTyping = useChatStore((s) => s.sendTyping);
+  const sendMessage = useMessageStore((s) => s.sendMessage);
+  const startTyping = useMessageStore((s) => s.startTyping);
+  const stopTyping = useMessageStore((s) => s.stopTyping);
   const uploadFile = useUploadStore((s) => s.uploadFile);
 
   const [text, setText] = useState("");
@@ -21,10 +20,16 @@ export default function Composer({ chatGroupId, className = "" }) {
 
   const typingTimer = useRef(null);
 
+  const sendTyping = (isTyping) => {
+    if (!chatGroupId) return;
+    if (isTyping) startTyping(chatGroupId);
+    else stopTyping(chatGroupId);
+  };
+
   const onTyping = () => {
     clearTimeout(typingTimer.current);
-    sendTyping(chatGroupId, true);
-    typingTimer.current = setTimeout(() => sendTyping(chatGroupId, false), 1200);
+    sendTyping(true);
+    typingTimer.current = setTimeout(() => sendTyping(false), 1200);
   };
 
   const handleFile = async (e) => {
@@ -42,8 +47,10 @@ export default function Composer({ chatGroupId, className = "" }) {
       setBusy(true);
       if (file) {
         const uploaded = await uploadFile(file);
-        const mediaUrl = uploaded.optimizedUrl || uploaded.originalUrl;
-        await sendMessage(chatGroupId, { mediaUrl });
+        const mediaUrl = uploaded?.optimizedUrl || uploaded?.originalUrl;
+        if (mediaUrl) {
+          await sendMessage(chatGroupId, { mediaUrl });
+        }
         setFile(null);
         setPreview("");
       }
@@ -54,17 +61,14 @@ export default function Composer({ chatGroupId, className = "" }) {
       }
     } finally {
       setBusy(false);
-      sendTyping(chatGroupId, false);
+      sendTyping(false);
     }
   };
 
   useEffect(() => () => clearTimeout(typingTimer.current), []);
 
   return (
-    <form
-      onSubmit={submit}
-      className={`flex items-center gap-2 p-2 sm:p-3 ${className}`}
-    >
+    <form onSubmit={submit} className={`flex items-center gap-2 p-2 sm:p-3 ${className}`}>
       {preview && (
         <div className="flex items-center gap-3 px-2 py-1 rounded bg-muted/40 mr-auto">
           {file?.type?.startsWith("video") ? (
@@ -72,7 +76,15 @@ export default function Composer({ chatGroupId, className = "" }) {
           ) : (
             <img src={preview} className="h-14 sm:h-16 rounded" alt="preview" />
           )}
-          <Button type="button" size="icon" variant="ghost" onClick={() => { setFile(null); setPreview(""); }}>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            onClick={() => {
+              setFile(null);
+              setPreview("");
+            }}
+          >
             <X className="w-4 h-4" />
           </Button>
         </div>
@@ -85,11 +97,14 @@ export default function Composer({ chatGroupId, className = "" }) {
 
       <Input
         value={text}
-        onChange={(e) => { setText(e.target.value); onTyping(); }}
+        onChange={(e) => {
+          setText(e.target.value);
+          onTyping();
+        }}
         placeholder="Message…"
         className="flex-1 text-sm"
-        onFocus={() => sendTyping(chatGroupId, true)}
-        onBlur={() => sendTyping(chatGroupId, false)}
+        onFocus={() => sendTyping(true)}
+        onBlur={() => sendTyping(false)}
         disabled={busy}
       />
 
@@ -100,6 +115,3 @@ export default function Composer({ chatGroupId, className = "" }) {
     </form>
   );
 }
-=======
-{"code":"rate-limited","message":"You have hit the rate limit. Please upgrade to keep chatting.","providerLimitHit":false,"isRetryable":true}
->>>>>>> e99ab674b2d5de3d577bf414f0a6c2e271967d2c

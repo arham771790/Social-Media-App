@@ -52,7 +52,7 @@ app.use("/api", commentRoutes);
 app.use("/api/tags", tagRoutes);
 app.use("/api/social", socialRoutes);
 app.use("/api/upload", uploadRoutes);
-app.use("/api/messages", messageRoutes);
+app.use("/api", messageRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/health", healthRoutes);

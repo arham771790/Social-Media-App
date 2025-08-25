@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useChatStore } from "@/store/chatStore";
+import { useMessageStore } from "@/store/messageStore";
 
 export default function useCall({ roomId, mode = "audio" }) {
-  const socket = useChatStore((s) => s.socket);
+  const socket = useMessageStore((s) => s.socket);
   const pcRef = useRef(null);
   const localRef = useRef(null);
   const remoteRef = useRef(null);

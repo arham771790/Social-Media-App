@@ -1,10 +1,7 @@
 // src/controllers/messageController.js
-// Handles: threads (sidebar), messages CRUD (read/send/mark read),
-// user search, create DM/group, and realtime emits.
-
 import prisma from "../utils/db.js";
 import { StatusCodes } from "http-status-codes";
-import { io } from "../server.js";
+import { io, isUserOnline } from "../server.js";
 import { createAndEmitNotification } from "./notificationController.js";
 
 /** Infer message type from media URL so UI can render appropriately. */
@@ -20,10 +17,10 @@ const inferMessageType = (mediaUrl) => {
 const ensureMembership = async (chatGroupId, userId) => {
   const row = await prisma.chatGroup.findFirst({
     where: {
-      id: chatGroupId,
+      id: String(chatGroupId),
       OR: [
-        { members: { some: { id: userId } } },
-        { admins:  { some: { id: userId } } },
+        { members: { some: { id: String(userId) } } },
+        { admins:  { some: { id: String(userId) } } },
       ],
     },
     select: { id: true },
@@ -32,21 +29,13 @@ const ensureMembership = async (chatGroupId, userId) => {
 };
 
 /* ---------------------------------------
-   THREADS (Sidebar) – ordered server-side
+   THREADS (Sidebar)
 ---------------------------------------- */
-/**
- * GET /api/messages/threads
- * Returns all threads the user participates in, ordered by lastActivityAt DESC.
- * Provides lastMessage preview + per-thread unread + totalUnread.
- */
-// src/controllers/messageController.js
 
 export const getChatThreads = async (req, res) => {
   try {
     const userId = req.userId;
-    if (!userId) {
-      return res.status(StatusCodes.UNAUTHORIZED).json({ error: "Unauthorized" });
-    }
+    if (!userId) return res.status(StatusCodes.UNAUTHORIZED).json({ error: "Unauthorized" });
 
     const groups = await prisma.chatGroup.findMany({
       where: {
@@ -54,7 +43,7 @@ export const getChatThreads = async (req, res) => {
           { members: { some: { id: userId } } },
           { admins:  { some: { id: userId } } },
         ],
-        // if you added archived: false, include it here
+        archived: false,
       },
       include: {
         members:  { select: { id: true, username: true, avatar: true } },
@@ -65,15 +54,9 @@ export const getChatThreads = async (req, res) => {
           include: { sender: { select: { id: true, username: true, avatar: true } } },
         },
       },
-      // order primarily by lastActivityAt; fall back just in case
-      orderBy: [
-        { lastActivityAt: "desc" },
-        { updatedAt: "desc" },
-        { createdAt: "desc" },
-      ],
+      orderBy: [{ lastActivityAt: "desc" }, { updatedAt: "desc" }, { createdAt: "desc" }],
     });
 
-    // unread per-thread for this user
     const unreadCounts = await Promise.all(
       groups.map((g) =>
         prisma.message.count({
@@ -91,13 +74,9 @@ export const getChatThreads = async (req, res) => {
       const others = g.members.filter((m) => m.id !== userId);
       return {
         id: g.id,
-        name: g.type === "DIRECT"
-          ? (others[0]?.username ?? g.name)
-          : g.name,
+        name: g.type === "DIRECT" ? (others[0]?.username ?? g.name) : g.name,
         type: g.type, // DIRECT or GROUP
-        avatar: g.type === "DIRECT"
-          ? (others[0]?.avatar ?? null)
-          : (g.imageUrl ?? null),
+        avatar: g.type === "DIRECT" ? (others[0]?.avatar ?? null) : (g.imageUrl ?? null),
         lastMessage: last
           ? {
               id: last.id,
@@ -121,22 +100,14 @@ export const getChatThreads = async (req, res) => {
   }
 };
 
-
-/**
- * GET /api/messages/unread-count
- * Total unread across all threads for header badge.
- */
 export const getUnreadTotal = async (req, res) => {
   try {
     const userId = req.userId;
     const total = await prisma.message.count({
-      where: {
-        senderId: { not: userId },
-        readBy: { none: { id: userId } },
-      },
+      where: { senderId: { not: userId }, readBy: { none: { id: userId } } },
     });
     res.status(StatusCodes.OK).json({ total });
-  } catch (e) {
+  } catch {
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to fetch unread count" });
   }
 };
@@ -144,10 +115,7 @@ export const getUnreadTotal = async (req, res) => {
 /* -------------------------------
    USER SEARCH + CREATE DM/GROUP
 -------------------------------- */
-/**
- * GET /api/messages/users?search=
- * Returns public users you can DM (excluding yourself).
- */
+
 export const getMessageableUsers = async (req, res) => {
   try {
     const userId = req.userId;
@@ -169,30 +137,21 @@ export const getMessageableUsers = async (req, res) => {
   }
 };
 
-/**
- * POST /api/messages/direct
- * Body: { targetUserId }
- * Creates or returns an existing DIRECT chat (unique per pair via directKey).
- */
 export const createDirectChat = async (req, res) => {
   try {
     const userId = req.userId;
     const { targetUserId } = req.body;
 
-    if (!targetUserId)
-      return res.status(StatusCodes.BAD_REQUEST).json({ error: "Target user ID is required" });
-    if (userId === targetUserId)
-      return res.status(StatusCodes.BAD_REQUEST).json({ error: "Cannot chat with yourself" });
+    if (!targetUserId) return res.status(StatusCodes.BAD_REQUEST).json({ error: "Target user ID is required" });
+    if (userId === targetUserId) return res.status(StatusCodes.BAD_REQUEST).json({ error: "Cannot chat with yourself" });
 
     const target = await prisma.user.findUnique({
       where: { id: targetUserId },
       select: { id: true, username: true, avatar: true, isPublic: true },
     });
     if (!target) return res.status(StatusCodes.NOT_FOUND).json({ error: "User not found" });
-    if (!target.isPublic)
-      return res.status(StatusCodes.FORBIDDEN).json({ error: "Cannot message private user" });
+    if (!target.isPublic) return res.status(StatusCodes.FORBIDDEN).json({ error: "Cannot message private user" });
 
-    // enforce single DM with a deterministic directKey "<min>:<max>"
     const [a, b] = [String(userId), String(targetUserId)].sort();
     const directKey = `${a}:${b}`;
 
@@ -202,13 +161,7 @@ export const createDirectChat = async (req, res) => {
     });
     if (existing) {
       return res.status(StatusCodes.OK).json({
-        chatGroup: {
-          id: existing.id,
-          name: target.username,
-          type: "DIRECT",
-          avatar: target.avatar,
-          members: existing.members,
-        },
+        chatGroup: { id: existing.id, name: target.username, type: "DIRECT", avatar: target.avatar, members: existing.members },
       });
     }
 
@@ -219,7 +172,7 @@ export const createDirectChat = async (req, res) => {
         name: `Chat with ${target.username}`,
         createdBy: { connect: { id: userId } },
         members:   { connect: [{ id: userId }, { id: targetUserId }] },
-        lastActivityAt: new Date(), // so it shows at top instantly
+        lastActivityAt: new Date(),
       },
       include: { members: { select: { id: true, username: true, avatar: true } } },
     });
@@ -239,11 +192,6 @@ export const createDirectChat = async (req, res) => {
   }
 };
 
-/**
- * POST /api/messages/group
- * Body: { name, description?, memberIds: string[], imageUrl? }
- * Creates a GROUP chat; requester becomes admin automatically.
- */
 export const createGroupChat = async (req, res) => {
   try {
     const userId = req.userId;
@@ -253,10 +201,8 @@ export const createGroupChat = async (req, res) => {
       return res.status(StatusCodes.BAD_REQUEST).json({ error: "Group name and members required" });
     }
 
-    // ensure creator is in member list
     const allIds = memberIds.includes(userId) ? memberIds : [userId, ...memberIds];
 
-    // only allow public users for now
     const users = await prisma.user.findMany({
       where: { id: { in: allIds }, isPublic: true },
       select: { id: true },
@@ -300,10 +246,7 @@ export const createGroupChat = async (req, res) => {
 /* ----------------
    MESSAGES (CRUD)
 ----------------- */
-/**
- * GET /api/messages/:chatGroupId?limit=50&before=<ISO>
- * Paginates messages newest→older; also marks sender≠me as read (server emits 'messages:read').
- */
+
 export const getMessages = async (req, res) => {
   try {
     const { chatGroupId } = req.params;
@@ -316,7 +259,7 @@ export const getMessages = async (req, res) => {
 
     const where = { chatGroupId, ...(before ? { createdAt: { lt: before } } : {}) };
 
-    // mark all unread (from others) as read
+    // mark unread (others) as read
     const unread = await prisma.message.findMany({
       where: { chatGroupId, senderId: { not: userId }, readBy: { none: { id: userId } } },
       select: { id: true },
@@ -330,13 +273,11 @@ export const getMessages = async (req, res) => {
           })
         )
       );
-      // realtime read-receipts
       io.to(chatGroupId).emit("messages:read", {
         chatGroupId, userId, messageIds: unread.map((m) => m.id),
       });
     }
 
-    // load page (desc → reverse to asc for display)
     const rowsDesc = await prisma.message.findMany({
       where,
       orderBy: { createdAt: "desc" },
@@ -348,29 +289,20 @@ export const getMessages = async (req, res) => {
     });
 
     const items = rowsDesc.reverse();
-    const hasMore =
-      items.length === limit
-        ? (await prisma.message.count({
-            where: { chatGroupId, createdAt: { lt: items[0].createdAt } },
-          })) > 0
-        : false;
+    const nextCursor = items.length ? items[0].createdAt : null;
+    const hasMore = nextCursor
+      ? (await prisma.message.count({
+          where: { chatGroupId, createdAt: { lt: nextCursor } },
+        })) > 0
+      : false;
 
-    res.status(StatusCodes.OK).json({
-      items,
-      pageInfo: { hasMore, before: items[0]?.createdAt || null },
-    });
+    res.status(StatusCodes.OK).json({ items, pageInfo: { hasMore, before: nextCursor } });
   } catch (err) {
     console.error("getMessages error", err);
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to get messages" });
   }
 };
 
-/**
- * POST /api/messages/:chatGroupId
- * Body: { content?, mediaUrl?, clientTempId? }
- * Persists the message, bumps lastActivityAt, emits 'message:new',
- * and creates in-app notifications for all other members.
- */
 export const sendMessage = async (req, res) => {
   try {
     const { chatGroupId } = req.params;
@@ -386,6 +318,7 @@ export const sendMessage = async (req, res) => {
 
     const type = inferMessageType(mediaUrl);
 
+    // Create message, then bump thread & lastMessageId
     const message = await prisma.message.create({
       data: {
         content:  content || null,
@@ -401,16 +334,15 @@ export const sendMessage = async (req, res) => {
       },
     });
 
-    // keep thread fresh for server-side ordering
     await prisma.chatGroup.update({
       where: { id: chatGroupId },
-      data:  { lastActivityAt: new Date() },
+      data:  { lastActivityAt: new Date(), lastMessage: { connect: { id: message.id } } },
     });
 
-    // realtime broadcast (room == chatGroupId); include clientTempId for optimistic reconcile
+    // socket broadcast (room == chatGroupId)
     io.to(chatGroupId).emit("message:new", { chatGroupId, message, clientTempId });
 
-    // create in-app notifications for all other participants (works for offline too)
+    // in-app notifications for other members
     const group = await prisma.chatGroup.findUnique({
       where: { id: chatGroupId },
       select: { members: { select: { id: true } }, admins: { select: { id: true } } },
@@ -427,14 +359,13 @@ export const sendMessage = async (req, res) => {
         createAndEmitNotification({
           recipientId: rid,
           type: "MESSAGE",
-          message: `New message from @${message.sender.username}`,
+          message: `New message`,
           relatedUserId: userId,
           relatedPostId: null,
         })
       )
     );
 
-    // also respond via HTTP (belt & suspenders in case socket echo is missed)
     return res.status(StatusCodes.CREATED).json({ ...message, clientTempId });
   } catch (err) {
     console.error("sendMessage error", err);
@@ -442,10 +373,6 @@ export const sendMessage = async (req, res) => {
   }
 };
 
-/**
- * PUT /api/messages/:chatGroupId/read
- * Marks all unread messages from others as read and emits 'messages:read'.
- */
 export const markMessagesAsRead = async (req, res) => {
   try {
     const { chatGroupId } = req.params;
@@ -478,5 +405,146 @@ export const markMessagesAsRead = async (req, res) => {
   } catch (err) {
     console.error("markMessagesAsRead error", err);
     res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to mark read" });
+  }
+};
+
+/* -------------------------
+   TYPING & PRESENCE (REST)
+--------------------------*/
+
+// Start/stop typing via REST (these simply emit socket events).
+export const typingStart = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { chatGroupId, username } = req.body;
+    if (!chatGroupId) return res.status(StatusCodes.BAD_REQUEST).json({ error: "chatGroupId required" });
+
+    const ok = await ensureMembership(chatGroupId, userId);
+    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
+
+    io.to(String(chatGroupId)).emit("typing:start", { chatGroupId: String(chatGroupId), userId: String(userId), username });
+    res.status(StatusCodes.OK).json({ ok: true });
+  } catch (e) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "typingStart failed" });
+  }
+};
+
+export const typingStop = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { chatGroupId } = req.body;
+    if (!chatGroupId) return res.status(StatusCodes.BAD_REQUEST).json({ error: "chatGroupId required" });
+
+    const ok = await ensureMembership(chatGroupId, userId);
+    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
+
+    io.to(String(chatGroupId)).emit("typing:stop", { chatGroupId: String(chatGroupId), userId: String(userId) });
+    res.status(StatusCodes.OK).json({ ok: true });
+  } catch {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "typingStop failed" });
+  }
+};
+
+// Query online presence of members in a chat (for "online" chips in header)
+export const getChatPresence = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { chatGroupId } = req.params;
+
+    const ok = await ensureMembership(chatGroupId, userId);
+    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
+
+    const group = await prisma.chatGroup.findUnique({
+      where: { id: String(chatGroupId) },
+      select: { members: { select: { id: true, username: true, avatar: true } }, admins: { select: { id: true, username: true, avatar: true } } },
+    });
+
+    const uniq = new Map();
+    for (const m of [...(group?.members || []), ...(group?.admins || [])]) {
+      uniq.set(m.id, m);
+    }
+
+    const users = Array.from(uniq.values()).map((u) => ({
+      ...u,
+      online: isUserOnline(String(u.id)),
+    }));
+
+    res.status(StatusCodes.OK).json({ users });
+  } catch (e) {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to fetch presence" });
+  }
+};
+
+/* -------------------------
+   CALL SIGNALING (REST)
+--------------------------*/
+
+// These REST endpoints just emit the same socket events your server handles.
+// Useful if you want to initiate calls via HTTP or ensure auth/membership at the API layer.
+
+export const callOffer = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { chatGroupId } = req.params;
+    const { sdp, fromUser } = req.body || {};
+    if (!chatGroupId || !sdp) return res.status(StatusCodes.BAD_REQUEST).json({ error: "chatGroupId and sdp required" });
+
+    const ok = await ensureMembership(chatGroupId, userId);
+    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
+
+    io.to(String(chatGroupId)).emit("call:offer", { sdp, fromUser: fromUser || { id: userId } });
+    res.status(StatusCodes.OK).json({ ok: true });
+  } catch {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to emit offer" });
+  }
+};
+
+export const callAnswer = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { chatGroupId } = req.params;
+    const { sdp, fromUser } = req.body || {};
+    if (!chatGroupId || !sdp) return res.status(StatusCodes.BAD_REQUEST).json({ error: "chatGroupId and sdp required" });
+
+    const ok = await ensureMembership(chatGroupId, userId);
+    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
+
+    io.to(String(chatGroupId)).emit("call:answer", { sdp, fromUser: fromUser || { id: userId } });
+    res.status(StatusCodes.OK).json({ ok: true });
+  } catch {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to emit answer" });
+  }
+};
+
+export const callCandidate = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { chatGroupId } = req.params;
+    const { candidate, fromUser } = req.body || {};
+    if (!chatGroupId || !candidate) return res.status(StatusCodes.BAD_REQUEST).json({ error: "chatGroupId and candidate required" });
+
+    const ok = await ensureMembership(chatGroupId, userId);
+    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
+
+    io.to(String(chatGroupId)).emit("call:candidate", { candidate, fromUser: fromUser || { id: userId } });
+    res.status(StatusCodes.OK).json({ ok: true });
+  } catch {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to emit candidate" });
+  }
+};
+
+export const callEnd = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { chatGroupId } = req.params;
+    const { reason } = req.body || {};
+
+    const ok = await ensureMembership(chatGroupId, userId);
+    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
+
+    io.to(String(chatGroupId)).emit("call:end", { reason: reason || "ended" });
+    res.status(StatusCodes.OK).json({ ok: true });
+  } catch {
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to emit call end" });
   }
 };

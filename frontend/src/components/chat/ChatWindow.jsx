@@ -1,6 +1,6 @@
 "use client";
 import { useEffect } from "react";
-import { useChatStore } from "@/store/chatStore";
+import { useChatStore } from "@/store/messageStore";
 
 export default function ChatWindow() {
   const { messages, selectedChat, fetchMessages, subscribeToMessages } =

@@ -3,7 +3,7 @@
 
 import { useEffect, useRef } from "react";
 import { PhoneIncoming, Phone, PhoneOff } from "lucide-react";
-import { useChatStore } from "@/store/chatStore";
+import { useChatStore } from "@/store/messageStore";
 import { Button } from "@/components/ui/button";
 
 export default function IncomingCallToast({ onAccept }) {

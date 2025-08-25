@@ -8,13 +8,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import api from "@/lib/axios";
-import { useChatStore } from "@/store/chatStore";
+import { useMessageStore } from "@/store/messageStore";
 
 const API_PREFIX = (process.env.NEXT_PUBLIC_API_PREFIX ?? "/api") || "";
 const ep = (p) => `${API_PREFIX}${p}`;
 
 export default function NewGroupDialog({ open, onOpenChange, onCreated }) {
-  const fetchThreads = useChatStore((s) => s.fetchThreads);
+  const fetchThreads = useMessageStore((s) => s.fetchThreads);
 
   const [name, setName] = useState("");
   const [query, setQuery] = useState("");

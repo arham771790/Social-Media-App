@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { useChatStore } from "@/store/chatStore";
+import { useChatStore } from "@/store/messageStore";
 
 export default function MessageInput() {
   const [text, setText] = useState("");

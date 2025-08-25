@@ -1,34 +1,49 @@
 // src/routes/messageRoutes.js
-// Auth-protected routes for threads, messages, and chat creation.
-
-import express from "express";
-import { auth } from "../middlewares/auth.js";
+import { Router } from "express";
+import { auth } from "../middlewares/auth.js"; // must set req.userId
 import {
-  getChatThreads,
-  getUnreadTotal,
-  getMessageableUsers,
-  createDirectChat,
-  createGroupChat,
-  getMessages,
-  sendMessage,
-  markMessagesAsRead,
+  // Threads & unread
+  getChatThreads, getUnreadTotal,
+  // Search & create
+  getMessageableUsers, createDirectChat, createGroupChat,
+  // Messages
+  getMessages, sendMessage, markMessagesAsRead,
+  // Typing & presence
+  typingStart, typingStop, getChatPresence,
+  // Calls
+  callOffer, callAnswer, callCandidate, callEnd,
 } from "../controllers/messageController.js";
 
-const router = express.Router();
-router.use(auth); // ✅ all routes require JWT
+const router = Router();
 
-// Threads + counts
-router.get("/threads", getChatThreads);
-router.get("/unread-count", getUnreadTotal);
+// All routes require auth
+router.use(auth);
 
-// Search + create chats
-router.get("/users", getMessageableUsers);
-router.post("/direct", createDirectChat);
-router.post("/group", createGroupChat);
+// Threads/unread
+router.get("/messages/threads", getChatThreads);
+router.get("/messages/unread-count", getUnreadTotal);
 
-// Messages
-router.get("/:chatGroupId", getMessages);
-router.post("/:chatGroupId", sendMessage);
-router.put("/:chatGroupId/read", markMessagesAsRead);
+// Search & create
+router.get("/messages/users", getMessageableUsers);
+router.post("/messages/direct", createDirectChat);
+router.post("/messages/group", createGroupChat);
+
+// Messages (CRUD-ish)
+router.get("/messages/:chatGroupId", getMessages);
+router.post("/messages/:chatGroupId", sendMessage);
+router.put("/messages/:chatGroupId/read", markMessagesAsRead);
+
+// Typing (emit over sockets for room)
+router.post("/messages/:chatGroupId/typing/start", typingStart);
+router.post("/messages/:chatGroupId/typing/stop", typingStop);
+
+// Presence queries
+router.get("/messages/:chatGroupId/presence", getChatPresence);
+
+// Call signaling (emit over sockets for room)
+router.post("/messages/:chatGroupId/call/offer", callOffer);
+router.post("/messages/:chatGroupId/call/answer", callAnswer);
+router.post("/messages/:chatGroupId/call/candidate", callCandidate);
+router.post("/messages/:chatGroupId/call/end", callEnd);
 
 export default router;

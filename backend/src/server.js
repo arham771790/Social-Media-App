@@ -108,24 +108,17 @@ io.on("connection", (socket) => {
   const userId = socket.data.userId;
   if (!userId) return socket.disconnect(true);
 
-  // console.log("[io] connected", { userId, sid: socket.id }); // (optional) debug
-
-  // Presence + per-user room (used for notifications)
+  // Presence + per-user notifications room
   addPresence(userId, socket.id);
   socket.join(`user:${userId}`);
 
-  // JOIN chat rooms — supports both new and legacy event names
-  // New unified API with ACK: { ok: boolean, error?: string }
+  // ---- Room join/leave (with ACK + membership guard) ----
   socket.on("room:join", async ({ chatGroupId, roomId }, ack) => {
     const rid = String(chatGroupId ?? roomId ?? "");
     if (!rid) return ack?.({ ok: false, error: "invalid_room" });
 
-    // Guard membership to avoid unauthorized snooping
     const allowed = await ensureMembership(rid, userId);
-    if (!allowed) {
-      // console.warn("[io] forbidden join", { userId, rid }); // (optional) debug
-      return ack?.({ ok: false, error: "forbidden" });
-    }
+    if (!allowed) return ack?.({ ok: false, error: "forbidden" });
 
     socket.join(rid);
     return ack?.({ ok: true });
@@ -138,7 +131,7 @@ io.on("connection", (socket) => {
     return ack?.({ ok: true });
   });
 
-  // Back-compat with older client (string roomId) — also guarded now
+  // ---- Back-compat basic join/leave (string roomId) ----
   socket.on("join", async (roomId) => {
     if (!roomId) return;
     if (await ensureMembership(String(roomId), userId)) socket.join(String(roomId));
@@ -147,31 +140,41 @@ io.on("connection", (socket) => {
     if (roomId) socket.leave(String(roomId));
   });
 
-  // WebRTC signaling (room-scoped)
-  socket.on("call:offer",    ({ roomId, sdp, fromUser }) => { if (roomId) socket.to(String(roomId)).emit("call:offer",    { sdp, fromUser }); });
-  socket.on("call:answer",   ({ roomId, sdp, fromUser }) => { if (roomId) socket.to(String(roomId)).emit("call:answer",   { sdp, fromUser }); });
-  socket.on("call:candidate",({ roomId, candidate, fromUser }) => { if (roomId) socket.to(String(roomId)).emit("call:candidate", { candidate, fromUser }); });
-  socket.on("call:end",      ({ roomId, reason }) => { if (roomId) io.to(String(roomId)).emit("call:end", { reason }); });
+  // ---- WebRTC signaling (room-scoped) ----
+  socket.on("call:offer",     ({ roomId, sdp, fromUser }) => { if (roomId) socket.to(String(roomId)).emit("call:offer",     { sdp, fromUser }); });
+  socket.on("call:answer",    ({ roomId, sdp, fromUser }) => { if (roomId) socket.to(String(roomId)).emit("call:answer",    { sdp, fromUser }); });
+  socket.on("call:candidate", ({ roomId, candidate, fromUser }) => { if (roomId) socket.to(String(roomId)).emit("call:candidate", { candidate, fromUser }); });
+  socket.on("call:end",       ({ roomId, reason }) => { if (roomId) io.to(String(roomId)).emit("call:end", { reason }); });
 
-  // Typing UX (room-scoped)
-  socket.on("typing:start", ({ roomId, userId: uid }) => {
-    if (roomId) socket.to(String(roomId)).emit("typing:start", {
-      roomId: String(roomId),
-      userId: uid || userId
+  // ---- Typing UX (ACCEPT chatGroupId or roomId; FORWARD username) ----
+  socket.on("typing:start", ({ roomId, chatGroupId, userId: uid, username }) => {
+    const rid = String(chatGroupId ?? roomId ?? "");
+    if (!rid) return;
+    // No DB read for typing; rely on room join guard above
+    socket.to(rid).emit("typing:start", {
+      chatGroupId: rid,
+      roomId: rid,
+      userId: uid || userId,
+      username,
     });
   });
-  socket.on("typing:stop",  ({ roomId, userId: uid }) => {
-    if (roomId) socket.to(String(roomId)).emit("typing:stop", {
-      roomId: String(roomId),
-      userId: uid || userId
+
+  socket.on("typing:stop", ({ roomId, chatGroupId, userId: uid }) => {
+    const rid = String(chatGroupId ?? roomId ?? "");
+    if (!rid) return;
+    socket.to(rid).emit("typing:stop", {
+      chatGroupId: rid,
+      roomId: rid,
+      userId: uid || userId,
     });
   });
 
+  // ---- Presence updates (emit aggregate for your UI) ----
   socket.on("disconnect", (reason) => {
-    // console.log("[io] disconnected", { userId, sid: socket.id, reason }); // (optional) debug
     removePresence(userId, socket.id);
   });
 });
+
 
 // ----- Start server -----
 httpServer.listen(PORT, () => {

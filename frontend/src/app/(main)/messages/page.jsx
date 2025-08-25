@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
-import { useChatStore } from "@/store/chatStore";
+import { useMessageStore } from "@/store/messageStore";
 import ConversationList from "@/components/messages/ConversationList";
 import ChatHeader from "@/components/messages/ChatHeader";
-import MessageList from "@/components/messages/MessageList";
+import ChatContainer from "@/components/messages/ChatContainer";
 import Composer from "@/components/messages/Composer";
 import NewMessageDialog from "@/components/messages/dialogs/NewMessageDialog";
+
+const ACTIVE_KEY = "activeChatId";
 
 export default function MessagesPage() {
   const { token, user } = useAuthStore();
@@ -19,57 +20,91 @@ export default function MessagesPage() {
     threads,
     messagesByGroup,
     joinRoom,
-    markRead,
+    markAsRead,
     totalUnread,
-    isLoading,
-    error,
-  } = useChatStore();
+  } = useMessageStore();
 
   const [activeId, setActiveId] = useState(
     typeof window !== "undefined" ? localStorage.getItem(ACTIVE_KEY) : null
   );
   const [newOpen, setNewOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
     if (!token) return;
-    bindSocket(ioClient, token);
+    bindSocket();
     fetchThreads().then((ts) => {
       if (!ts?.length) setNewOpen(true);
       if (!activeId && ts?.length) setActiveId(ts[0].id);
     });
-  }, [token]); // eslint-disable-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   useEffect(() => {
     if (!activeId) return;
-    fetchMessages(activeId).then(() => markRead(activeId)).catch(() => {});
+    fetchMessages(activeId).then(() => markAsRead(activeId)).catch(() => {});
     joinRoom(activeId);
-  }, [activeId]); // eslint-disable-line
+    localStorage.setItem(ACTIVE_KEY, activeId);
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
 
   const activeThread = useMemo(
     () => threads.find((t) => t.id === activeId),
     [threads, activeId]
   );
-  
-  const msgs = messagesByGroup[activeId]?.items || [];
+
+  const msgs = messagesByGroup[activeId] || [];
+
+  const handleNewChatCreated = (id) => {
+    if (!id) return;
+    setActiveId(id);
+    setNewOpen(false);
+  };
 
   return (
     <>
-      {/* min-h-0 here lets children own the scrolling */}
-      <div className="h-[calc(100vh-64px)] max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-[20rem_1fr] border rounded-lg overflow-hidden min-h-0">
-        <ConversationList
-          threads={threads}
-          activeId={activeId}
-          onPick={setActiveId}
-          onNew={() => setNewOpen(true)}
+      <div className="h-[calc(100vh-64px)] max-w-6xl mx-auto border rounded-lg overflow-hidden min-h-0 grid md:grid-cols-[20rem_1fr]">
+        {/* Sidebar (List) */}
+        <div
+          className={[
+            "bg-card border-r border-border md:static md:translate-x-0 md:block",
+            "fixed inset-y-0 left-0 w-[85%] max-w-xs z-30 transition-transform duration-200",
+            sidebarOpen ? "translate-x-0" : "-translate-x-full",
+          ].join(" ")}
+        >
+          <ConversationList
+            threads={threads}
+            activeId={activeId}
+            onPick={(id) => setActiveId(id)}
+            onNew={() => setNewOpen(true)}
+            totalUnread={totalUnread}
+          />
+        </div>
+
+        {/* Overlay for mobile drawer */}
+        <div
+          className={[
+            "fixed inset-0 bg-black/40 z-20 md:hidden",
+            sidebarOpen ? "block" : "hidden",
+          ].join(" ")}
+          onClick={() => setSidebarOpen(false)}
         />
 
-        {/* make this column a flex + min-h-0 so MessageList can scroll */}
-        <div className="flex flex-col min-h-0">
-          <ChatHeader thread={activeThread} />
+        {/* Chat pane */}
+        <div className="flex flex-col min-h-0 bg-background">
+          <ChatHeader
+             thread={activeThread}
+             onToggleSidebar={() => setSidebarOpen((v) => !v)}
+             onBack={() => setSidebarOpen(true)}
+             showBackOnMobile
+             hasActive={!!activeId}
+           />
           {activeId ? (
             <>
-              <MessageList items={msgs} meId={user?.id} />
+              <ChatContainer key={activeId} thread={activeThread} items={msgs} meId={user?.id} />
               <Composer chatGroupId={activeId} />
             </>
           ) : (
