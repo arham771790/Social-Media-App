@@ -38,27 +38,27 @@ export default function ConversationList({
   };
 
   return (
-    <div className="flex flex-col h-full bg-card">
+         <div className="flex flex-col h-full bg-card">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Messages</h2>
+             <div className="px-6 py-4 border-b border-border/50 flex items-center justify-between bg-gradient-to-r from-background to-muted/20">
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">Messages</h2>
           {totalUnread > 0 && (
-            <Badge variant="default" className="text-xs">
+            <Badge variant="default" className="text-xs shadow-lg animate-pulse">
               {totalUnread > 99 ? "99+" : totalUnread}
             </Badge>
           )}
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="ghost" onClick={onNew} className="gap-2">
+          <Button size="sm" variant="gradient" onClick={onNew} className="gap-2 shadow-sm hover:shadow-md transition-all duration-200">
             <MessageSquarePlus className="w-4 h-4" />
             <span className="hidden sm:inline">New</span>
           </Button>
           <Button
             size="sm"
-            variant="ghost"
+            variant="outline"
             onClick={() => setGroupOpen(true)}
-            className="hidden sm:flex gap-2"
+            className="hidden sm:flex gap-2 hover:bg-primary/10 hover:border-primary/50 transition-all duration-200"
           >
             <Users className="w-4 h-4" />
             Group
@@ -68,16 +68,16 @@ export default function ConversationList({
 
       {/* Loading */}
       {isLoading && !hasThreads && (
-        <div className="flex-1 p-4 space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-3 p-3">
-              <Skeleton className="w-12 h-12 rounded-full" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-3 w-32" />
-              </div>
-            </div>
-          ))}
+        <div className="flex-1 p-6 space-y-4">
+                     {Array.from({ length: 5 }).map((_, i) => (
+             <div key={i} className="flex items-center gap-4 p-4">
+               <Skeleton className="w-12 h-12 rounded-full" />
+               <div className="flex-1 space-y-3">
+                 <Skeleton className="h-4 w-28" />
+                 <Skeleton className="h-3 w-36" />
+               </div>
+             </div>
+           ))}
         </div>
       )}
 
@@ -95,15 +95,15 @@ export default function ConversationList({
                 <li
                   key={t.id}
                   onClick={() => onPick(t.id)}
-                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-muted/50 ${
-                    isActive ? "bg-muted border-r-2 border-primary" : ""
-                  }`}
+                                     className={`flex items-center gap-4 px-6 py-4 cursor-pointer transition-all duration-200 hover:bg-muted/30 ${
+                     isActive ? "bg-gradient-to-r from-primary/10 to-primary/5 border-r-2 border-primary shadow-sm" : ""
+                   }`}
                 >
                   {/* Avatar */}
                   <div className="relative">
-                    <Avatar className="w-12 h-12">
+                    <Avatar className="w-12 h-12 ring-2 ring-border/20 shadow-sm">
                       <AvatarImage src={t.avatar || undefined} />
-                      <AvatarFallback className="bg-muted-foreground/20">
+                      <AvatarFallback className="bg-gradient-to-r from-primary/20 to-primary/10 text-primary font-semibold">
                         {t.type === "GROUP" ? (
                           <Users className="w-6 h-6" />
                         ) : (
@@ -112,7 +112,7 @@ export default function ConversationList({
                       </AvatarFallback>
                     </Avatar>
                     {online && (
-                      <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-green-500 border-2 border-card" />
+                      <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-green-500 border-2 border-card shadow-sm animate-pulse" />
                     )}
                   </div>
 
@@ -177,8 +177,8 @@ export default function ConversationList({
           </ul>
         </div>
       ) : !isLoading ? (
-        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
-          <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
+           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
             <MessageSquarePlus className="w-8 h-8 text-muted-foreground" />
           </div>
           <div className="space-y-2">

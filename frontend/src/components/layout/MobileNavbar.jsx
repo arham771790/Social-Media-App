@@ -2,10 +2,10 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Search, PlusSquare, Heart, User } from 'lucide-react'
+import { Home, Search, PlusSquare, Heart, MessageCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import {useAuthStore} from '@/store/authStore'
+import { useAuthStore } from '@/store/authStore'
 
 const navigationItems = [
   {
@@ -15,13 +15,18 @@ const navigationItems = [
   },
   {
     name: 'Search',
-    href: '/search', 
+    href: '/search',
     icon: Search,
   },
   {
     name: 'Create',
     href: '/create',
     icon: PlusSquare,
+  },
+  {
+    name: 'Messages',
+    href: '/messages',
+    icon: MessageCircle, // ✅ fixed
   },
   {
     name: 'Notifications',
@@ -39,7 +44,6 @@ export default function MobileNavbar() {
       <div className="flex items-center justify-around py-2">
         {navigationItems.map((item) => {
           const isActive = pathname === item.href
-          
           return (
             <Link
               key={item.name}
@@ -60,7 +64,7 @@ export default function MobileNavbar() {
             </Link>
           )
         })}
-        
+
         {/* Profile Link */}
         <Link
           href="/profile"

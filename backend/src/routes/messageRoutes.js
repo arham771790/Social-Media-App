@@ -5,7 +5,7 @@ import {
   // Threads & unread
   getChatThreads, getUnreadTotal,
   // Search & create
-  getMessageableUsers, createDirectChat, createGroupChat,
+  getMessageableUsers, createDirectChat, createGroupChat,removeGroupMember,addGroupMembers,
   // Messages
   getMessages, sendMessage, markMessagesAsRead,
   // Typing & presence
@@ -27,6 +27,9 @@ router.get("/messages/unread-count", getUnreadTotal);
 router.get("/messages/users", getMessageableUsers);
 router.post("/messages/direct", createDirectChat);
 router.post("/messages/group", createGroupChat);
+router.delete("/messages/:chatGroupId/members/:memberId", removeGroupMember);
+router.post("/messages/:chatGroupId/members", addGroupMembers);
+
 
 // Messages (CRUD-ish)
 router.get("/messages/:chatGroupId", getMessages);

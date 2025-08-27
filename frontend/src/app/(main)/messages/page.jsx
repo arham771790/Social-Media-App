@@ -1,6 +1,8 @@
+// src/app/messages/page.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { MessageSquarePlus } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useMessageStore } from "@/store/messageStore";
 import ConversationList from "@/components/messages/ConversationList";
@@ -22,6 +24,8 @@ export default function MessagesPage() {
     joinRoom,
     markAsRead,
     totalUnread,
+    loadingThreads,
+    refreshPresence,
   } = useMessageStore();
 
   const [activeId, setActiveId] = useState(
@@ -44,6 +48,7 @@ export default function MessagesPage() {
     if (!activeId) return;
     fetchMessages(activeId).then(() => markAsRead(activeId)).catch(() => {});
     joinRoom(activeId);
+    refreshPresence(activeId);
     localStorage.setItem(ACTIVE_KEY, activeId);
     if (typeof window !== "undefined" && window.innerWidth < 768) {
       setSidebarOpen(false);
@@ -55,7 +60,6 @@ export default function MessagesPage() {
     () => threads.find((t) => t.id === activeId),
     [threads, activeId]
   );
-
   const msgs = messagesByGroup[activeId] || [];
 
   const handleNewChatCreated = (id) => {
@@ -66,12 +70,12 @@ export default function MessagesPage() {
 
   return (
     <>
-      <div className="h-[calc(100vh-64px)] max-w-6xl mx-auto border rounded-lg overflow-hidden min-h-0 grid md:grid-cols-[20rem_1fr]">
+      <div className="h-[calc(100vh-64px)] max-w-6xl mx-auto border border-border/50 rounded-xl overflow-hidden min-h-0 grid md:grid-cols-[20rem_1fr] shadow-lg">
         {/* Sidebar (List) */}
         <div
           className={[
-            "bg-card border-r border-border md:static md:translate-x-0 md:block",
-            "fixed inset-y-0 left-0 w-[85%] max-w-xs z-30 transition-transform duration-200",
+            "bg-card/95 backdrop-blur-sm border-r border-border/50 md:static md:translate-x-0 md:block shadow-lg",
+            "fixed inset-y-0 left-0 w-[85%] max-w-xs z-30 transition-all duration-300 ease-in-out",
             sidebarOpen ? "translate-x-0" : "-translate-x-full",
           ].join(" ")}
         >
@@ -81,6 +85,7 @@ export default function MessagesPage() {
             onPick={(id) => setActiveId(id)}
             onNew={() => setNewOpen(true)}
             totalUnread={totalUnread}
+            isLoading={loadingThreads}
           />
         </div>
 
@@ -94,14 +99,14 @@ export default function MessagesPage() {
         />
 
         {/* Chat pane */}
-        <div className="flex flex-col min-h-0 bg-background">
+        <div className="flex flex-col min-h-0 bg-background/95 backdrop-blur-sm">
           <ChatHeader
-             thread={activeThread}
-             onToggleSidebar={() => setSidebarOpen((v) => !v)}
-             onBack={() => setSidebarOpen(true)}
-             showBackOnMobile
-             hasActive={!!activeId}
-           />
+            thread={activeThread}
+            onToggleSidebar={() => setSidebarOpen((v) => !v)}
+            onBack={() => setSidebarOpen(true)}
+            showBackOnMobile
+            hasActive={!!activeId}
+          />
           {activeId ? (
             <>
               <ChatContainer key={activeId} thread={activeThread} items={msgs} meId={user?.id} />
@@ -109,7 +114,13 @@ export default function MessagesPage() {
             </>
           ) : (
             <div className="flex-1 grid place-items-center text-muted-foreground">
-              Select a chat
+              <div className="text-center">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-muted/30 flex items-center justify-center">
+                  <MessageSquarePlus className="w-10 h-10 text-muted-foreground/50" />
+                </div>
+                <h3 className="font-semibold text-lg mb-2">Select a chat</h3>
+                <p className="text-sm">Choose a conversation from the sidebar to start messaging</p>
+              </div>
             </div>
           )}
         </div>

@@ -92,7 +92,7 @@ export default function CreatePost() {
   const removeTag = (t) => setTags((prev) => prev.filter((x) => x !== t));
 
   return (
-    <Card className="bg-card border-border mb-6">
+    <Card className="bg-card border-border/50 mb-6 hover:shadow-lg transition-all duration-300">
       <input
         ref={fileInputRef}
         type="file"
@@ -101,11 +101,13 @@ export default function CreatePost() {
         onChange={onFileChange}
       />
 
-      <div className="p-4">
-        <div className="flex space-x-3">
-          <Avatar className="w-10 h-10">
+      <div className="p-6">
+        <div className="flex space-x-4">
+          <Avatar className="w-12 h-12 ring-2 ring-primary/20">
             <AvatarImage src={currentUser?.avatar} />
-            <AvatarFallback>{currentUser?.username?.[0]?.toUpperCase()}</AvatarFallback>
+            <AvatarFallback className="bg-primary/10 text-primary font-semibold">
+              {currentUser?.username?.[0]?.toUpperCase()}
+            </AvatarFallback>
           </Avatar>
 
           <div className="flex-1">
@@ -114,7 +116,7 @@ export default function CreatePost() {
               value={content}
               onChange={(e) => setContent(e.target.value)}
               onFocus={() => setExpanded(true)}
-              className="min-h-[60px] resize-none border-0 p-0 text-lg placeholder:text-muted-foreground focus-visible:ring-0"
+              className="min-h-[60px] resize-none border-0 p-0 text-lg placeholder:text-muted-foreground focus-visible:ring-0 bg-transparent"
             />
 
             <AnimatePresence>
@@ -123,21 +125,24 @@ export default function CreatePost() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="mt-4 space-y-4"
+                  className="mt-6 space-y-4"
                 >
                   <Input
                     placeholder="Add a title (optional)"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="text-lg font-medium"
+                    className="text-lg font-medium border-2"
                   />
 
                   <div>
-                    <div className="flex flex-wrap gap-2 mb-2">
+                    <div className="flex flex-wrap gap-2 mb-3">
                       {tags.map((tag) => (
-                        <Badge key={tag} variant="secondary" className="text-sm">
+                        <Badge key={tag} variant="secondary" className="text-sm hover:scale-105 transition-transform duration-200">
                           #{tag}
-                          <button onClick={() => removeTag(tag)} className="ml-1 hover:text-destructive">
+                          <button 
+                            onClick={() => removeTag(tag)} 
+                            className="ml-2 hover:text-destructive transition-colors duration-200 p-0.5 rounded-full hover:bg-destructive/10"
+                          >
                             <X className="w-3 h-3" />
                           </button>
                         </Badge>
@@ -148,28 +153,28 @@ export default function CreatePost() {
                       value={tagInput}
                       onChange={(e) => setTagInput(e.target.value)}
                       onKeyDown={handleTagAdd}
-                      className="text-sm"
+                      className="text-sm border-2"
                     />
                   </div>
 
                   {mediaPreview && (
-                    <div className="relative">
+                    <div className="relative group">
                       {media?.fileType === 'video' ? (
                         <video
                           src={mediaPreview}
                           controls
-                          className="w-full max-h-80 rounded-lg"
+                          className="w-full max-h-80 rounded-xl shadow-lg"
                         />
                       ) : (
                         <img
                           src={mediaPreview}
                           alt="Media preview"
-                          className="w-full max-h-80 object-cover rounded-lg"
+                          className="w-full max-h-80 object-cover rounded-xl shadow-lg"
                         />
                       )}
                       <button
                         onClick={() => { setMedia(null); setMediaPreview(null); }}
-                        className="absolute top-2 right-2 p-1 bg-black/50 text-white rounded-full hover:bg-black/70"
+                        className="absolute top-3 right-3 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full hover:scale-110 transition-all duration-200 backdrop-blur-sm"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -185,31 +190,33 @@ export default function CreatePost() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex items-center justify-between mt-4 pt-4 border-t border-border"
+            className="flex items-center justify-between mt-6 pt-6 border-t border-border/50"
           >
-            <div className="flex items-center space-x-2">
-              <Button variant="ghost" size="sm" onClick={pickFile} disabled={isUploading}>
-                <Image className="w-4 h-4 mr-1" />
+            <div className="flex items-center space-x-3">
+              <Button variant="ghost" size="sm" onClick={pickFile} disabled={isUploading} className="hover:bg-primary/10 hover:text-primary transition-all duration-200">
+                <Image className="w-4 h-4 mr-2" />
                 {isUploading ? 'Uploading...' : 'Photo/Video'}
               </Button>
-              <Button variant="ghost" size="sm">
-                <Video className="w-4 h-4 mr-1" />
+              <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-all duration-200">
+                <Video className="w-4 h-4 mr-2" />
                 Record
               </Button>
-              <Button variant="ghost" size="sm">
-                <Smile className="w-4 h-4 mr-1" />
+              <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-all duration-200">
+                <Smile className="w-4 h-4 mr-2" />
                 Feeling
               </Button>
             </div>
 
-            <div className="flex items-center space-x-2">
-              <Button variant="ghost" size="sm" onClick={() => setExpanded(false)}>
+            <div className="flex items-center space-x-3">
+              <Button variant="outline" size="sm" onClick={() => setExpanded(false)} className="hover:bg-muted transition-all duration-200">
                 Cancel
               </Button>
               <Button
                 onClick={handleSubmit}
                 disabled={isLoading || isUploading || (!content.trim() && !media)}
                 size="sm"
+                variant="gradient"
+                className="transition-all duration-200 hover:scale-105"
               >
                 {isLoading ? 'Posting...' : 'Post'}
               </Button>

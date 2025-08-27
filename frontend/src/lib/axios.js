@@ -1,8 +1,8 @@
+// src/lib/axios.js
 import axios from "axios";
 
-// NEXT_PUBLIC_API_URL = server root (NO /api)
-// e.g. http://localhost:4000 or https://yourdomain.com
-const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000").replace(/\/+$/,"");
+// NEXT_PUBLIC_API_URL must be the server ROOT (no /api). Example: http://localhost:4000
+const BASE_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000").replace(/\/+$/, "");
 
 const api = axios.create({
   baseURL: `${BASE_URL}/api`,
@@ -18,3 +18,4 @@ api.interceptors.request.use((config) => {
 });
 
 export default api;
+export { BASE_URL };

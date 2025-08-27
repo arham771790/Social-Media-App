@@ -1,65 +1,141 @@
+// src/components/messages/call/CallPanel.jsx
 "use client";
 
-import { useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { useEffect, useRef, useState } from "react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { PhoneOff, Mic, MicOff, Camera, CameraOff, Timer } from "lucide-react";
-import useCall from "@/hooks/useCall";
+import { PhoneOff } from "lucide-react";
+import { getSocket, sendOffer, sendAnswer, sendCandidate, endCall } from "@/lib/socket";
+import { useAuthStore } from "@/store/authStore";
 
 export default function CallPanel({ open, onOpenChange, roomId, mode = "audio" }) {
-  const { localRef, remoteRef, start, end, duration, running } = useCall({ roomId, mode });
+  const me = useAuthStore((s) => s.user);
+  const pcRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const remoteRef = useRef(null);
+  const localRef = useRef(null);
+  const [inCall, setInCall] = useState(false);
+  const isVideo = mode === "video";
 
+  // setup
   useEffect(() => {
-    if (open) start();
-    // end call when modal closes
-    return () => { if (open) end(); };
+    if (!open) return;
+
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
+    });
+    pcRef.current = pc;
+
+    pc.onicecandidate = (e) => {
+      if (e.candidate) sendCandidate(roomId, e.candidate.toJSON(), { id: me?.id });
+    };
+    pc.ontrack = (e) => {
+      if (remoteRef.current) {
+        remoteRef.current.srcObject = e.streams[0];
+      }
+    };
+
+    (async () => {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: isVideo,
+      });
+      localStreamRef.current = stream;
+      if (localRef.current) localRef.current.srcObject = stream;
+      stream.getTracks().forEach((t) => pc.addTrack(t, stream));
+
+      // create and send offer
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      sendOffer(roomId, offer, { id: me?.id });
+      setInCall(true);
+    })();
+
+    // socket listeners for signaling
+    const s = getSocket();
+    const onOffer = async ({ sdp, fromUser }) => {
+      if (!pcRef.current) return;
+      await pcRef.current.setRemoteDescription(new RTCSessionDescription(sdp));
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: isVideo,
+      });
+      localStreamRef.current = stream;
+      if (localRef.current) localRef.current.srcObject = stream;
+      stream.getTracks().forEach((t) => pcRef.current.addTrack(t, stream));
+      const answer = await pcRef.current.createAnswer();
+      await pcRef.current.setLocalDescription(answer);
+      sendAnswer(roomId, answer, { id: me?.id });
+      setInCall(true);
+    };
+    const onAnswer = async ({ sdp }) => {
+      if (!pcRef.current) return;
+      await pcRef.current.setRemoteDescription(new RTCSessionDescription(sdp));
+    };
+    const onCandidate = async ({ candidate }) => {
+      if (!pcRef.current) return;
+      try {
+        await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate));
+      } catch (_) {}
+    };
+    const onEnd = () => {
+      cleanup();
+      onOpenChange?.(false);
+    };
+
+    s.on("call:offer", onOffer);
+    s.on("call:answer", onAnswer);
+    s.on("call:candidate", onCandidate);
+    s.on("call:end", onEnd);
+
+    const cleanup = () => {
+      try {
+        localStreamRef.current?.getTracks().forEach((t) => t.stop());
+      } catch {}
+      try {
+        pcRef.current?.close();
+      } catch {}
+      localStreamRef.current = null;
+      pcRef.current = null;
+      setInCall(false);
+    };
+
+    return () => {
+      s.off("call:offer", onOffer);
+      s.off("call:answer", onAnswer);
+      s.off("call:candidate", onCandidate);
+      s.off("call:end", onEnd);
+      cleanup();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, roomId, mode]);
+
+  const hangUp = () => {
+    endCall(roomId, "user_end");
+    onOpenChange?.(false);
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="radix-dialog-content sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Timer className="w-4 h-4" />
-            {format(duration)}
-          </DialogTitle>
-        </DialogHeader>
-
-        <div className="grid gap-3">
-          {mode === "video" ? (
-            <div className="grid grid-cols-2 gap-2">
-              <video ref={localRef} autoPlay muted playsInline className="w-full rounded bg-black" />
-              <video ref={remoteRef} autoPlay playsInline className="w-full rounded bg-black" />
+      <DialogContent className="sm:max-w-xl">
+        <div className="flex flex-col gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <video ref={localRef} autoPlay muted playsInline className={`w-full rounded ${isVideo ? "" : "hidden"}`} />
+            <video ref={remoteRef} autoPlay playsInline className={`w-full rounded ${isVideo ? "" : "hidden"}`} />
+          </div>
+          {!isVideo && (
+            <div className="text-sm text-muted-foreground">
+              In audio call… (microphone active)
             </div>
-          ) : (
-            <audio ref={remoteRef} autoPlay />
           )}
-
-          <div className="flex items-center justify-center gap-2 pt-2">
-            {/* You can wire mute/camera toggles via tracks if you like; placeholders below */}
-            <Button variant="secondary" size="icon" title="Toggle mic">
-              <Mic className="w-4 h-4" />
-            </Button>
-            {mode === "video" && (
-              <Button variant="secondary" size="icon" title="Toggle camera">
-                <Camera className="w-4 h-4" />
-              </Button>
-            )}
-            <Button variant="destructive" onClick={end}>
-              <PhoneOff className="w-4 h-4 mr-2" /> End call
+          <div className="flex justify-center">
+            <Button variant="destructive" onClick={hangUp} className="gap-2">
+              <PhoneOff className="w-4 h-4" />
+              End Call
             </Button>
           </div>
         </div>
-
-        <DialogFooter />
       </DialogContent>
     </Dialog>
   );
-}
-
-function format(s) {
-  const mm = String(Math.floor(s / 60)).padStart(2, "0");
-  const ss = String(s % 60).padStart(2, "0");
-  return `${mm}:${ss}`;
 }

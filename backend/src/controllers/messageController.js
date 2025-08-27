@@ -192,56 +192,109 @@ export const createDirectChat = async (req, res) => {
   }
 };
 
+// controllers/message.controller.js
+
 export const createGroupChat = async (req, res) => {
   try {
-    const userId = req.userId;
-    const { name, description, memberIds, imageUrl } = req.body;
+    const { name, memberIds } = req.body;
 
-    if (!name || !Array.isArray(memberIds) || memberIds.length === 0) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ error: "Group name and members required" });
+    // Validate
+    if (!name || !Array.isArray(memberIds) || memberIds.length < 2) {
+      return res.status(400).json({
+        error: "Group name and at least 2 members are required",
+      });
     }
 
-    const allIds = memberIds.includes(userId) ? memberIds : [userId, ...memberIds];
-
-    const users = await prisma.user.findMany({
-      where: { id: { in: allIds }, isPublic: true },
-      select: { id: true },
-    });
-    if (users.length !== allIds.length) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ error: "Some users invalid" });
+    // Ensure the creator is always in the group
+    if (!memberIds.includes(req.userId)) {
+      memberIds.push(req.userId);
     }
 
-    const g = await prisma.chatGroup.create({
+    // Create the group chat
+    const groupChat = await prisma.chatGroup.create({
       data: {
-        type: "GROUP",
-        name, description, imageUrl,
-        createdBy: { connect: { id: userId } },
-        admins:    { connect: { id: userId } },
-        members:   { connect: allIds.map((id) => ({ id })) },
-        lastActivityAt: new Date(),
+        name,
+        members: {
+          connect: memberIds.map((id) => ({ id })),
+        },
+        createdBy: { connect: { id: req.userId } },
       },
       include: {
-        members: { select: { id: true, username: true, avatar: true } },
-        admins:  { select: { id: true, username: true, avatar: true } },
+        members: true,
+        createdBy: true,
       },
     });
 
-    res.status(StatusCodes.CREATED).json({
-      chatGroup: {
-        id: g.id,
-        name: g.name,
-        type: "GROUP",
-        avatar: g.imageUrl,
-        members: g.members,
-        admins: g.admins,
-        description: g.description,
-      },
-    });
-  } catch (err) {
-    console.error("createGroupChat error", err);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to create group chat" });
+    return res.status(201).json(groupChat);
+  } catch (error) {
+    console.error("createGroupChat error:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
 };
+// Remove a member (admin-only)
+export const removeGroupMember = async (req, res) => {
+  try {
+    const { chatGroupId, memberId } = req.params;
+    const userId = req.userId;
+
+    // Only an admin can remove
+    const group = await prisma.chatGroup.findUnique({
+      where: { id: chatGroupId },
+      include: { admins: true },
+    });
+
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    if (!group.admins.find((a) => a.id === userId)) {
+      return res.status(403).json({ error: "Only admins can remove members" });
+    }
+
+    await prisma.chatGroup.update({
+      where: { id: chatGroupId },
+      data: { members: { disconnect: { id: memberId } } },
+    });
+
+    io.to(chatGroupId).emit("group:memberRemoved", { chatGroupId, memberId });
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("removeGroupMember error", err);
+    res.status(500).json({ error: "Failed to remove member" });
+  }
+};
+
+// Add new members (admin-only)
+export const addGroupMembers = async (req, res) => {
+  try {
+    const { chatGroupId } = req.params;
+    const { memberIds } = req.body;
+    const userId = req.userId;
+
+    const group = await prisma.chatGroup.findUnique({
+      where: { id: chatGroupId },
+      include: { admins: true },
+    });
+
+    if (!group) return res.status(404).json({ error: "Group not found" });
+    if (!group.admins.find((a) => a.id === userId)) {
+      return res.status(403).json({ error: "Only admins can add members" });
+    }
+
+    const updated = await prisma.chatGroup.update({
+      where: { id: chatGroupId },
+      data: { members: { connect: memberIds.map((id) => ({ id })) } },
+      include: { members: true },
+    });
+
+    io.to(chatGroupId).emit("group:membersAdded", { chatGroupId, memberIds });
+
+    res.json(updated);
+  } catch (err) {
+    console.error("addGroupMembers error", err);
+    res.status(500).json({ error: "Failed to add members" });
+  }
+};
+
+
 
 /* ----------------
    MESSAGES (CRUD)

@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 4000;
 const httpServer = createServer(app);
 
 // ----- Allowed origins (shared format with app.js) -----
-const allowedOrigins = ("http://localhost:3000" || process.env.CORS_ORIGINS)
+const allowedOrigins = ( process.env.CORS_ORIGINS || "http://localhost:3000")
   .split(",")
   .map(s => s.trim())
   .filter(Boolean);

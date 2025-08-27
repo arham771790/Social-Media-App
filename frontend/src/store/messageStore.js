@@ -1,8 +1,15 @@
+// src/store/messageStore.js
 "use client";
 
 import { create } from "zustand";
 import api from "@/lib/axios";
-import { connectSocket, joinRoom as sockJoin, leaveRoom as sockLeave, emitTyping } from "@/lib/socket";
+import {
+  connectSocket,
+  joinRoom as sockJoin,
+  leaveRoom as sockLeave,
+  emitTyping,
+  getSocket,
+} from "@/lib/socket";
 import { useAuthStore } from "@/store/authStore";
 
 const ACTIVE_KEY = "activeChatId";
@@ -29,9 +36,11 @@ export const useMessageStore = create((set, get) => ({
   // threads & counts
   threads: [],
   totalUnread: 0,
+  loadingThreads: false,
 
   // active chat
   activeChatId: null,
+  loadingMessagesByGroup: {},          // { [groupId]: boolean }
 
   // messages per room (ASC)
   messagesByGroup: {},                 // { [groupId]: Message[] }
@@ -142,23 +151,48 @@ export const useMessageStore = create((set, get) => ({
     });
   },
 
+  // ----- PRESENCE (initial snapshot for a room) -----
+  refreshPresence: async (chatGroupId) => {
+    try {
+      const { data } = await api.get(`/messages/${chatGroupId}/presence`);
+      const online = (data?.users || []).filter((u) => u.online).map((u) => String(u.id));
+      set((st) => {
+        const setIds = new Set(st.onlineUserIds);
+        for (const id of online) setIds.add(id);
+        return { onlineUserIds: setIds };
+      });
+    } catch (e) {
+      // silent fail is fine
+    }
+  },
+
   // ----- THREADS -----
   fetchThreads: async () => {
-    const { data } = await api.get("/messages/threads");
-    set({
-      threads: data?.threads || [],
-      totalUnread: data?.totalUnread || 0,
-    });
-    return data?.threads || [];
+    set({ loadingThreads: true });
+    try {
+      const { data } = await api.get("/messages/threads");
+      set({
+        threads: data?.threads || [],
+        totalUnread: data?.totalUnread || 0,
+      });
+      return data?.threads || [];
+    } finally {
+      set({ loadingThreads: false });
+    }
   },
 
   // ----- MESSAGES -----
   fetchMessages: async (chatGroupId, limit = 50) => {
-    const { data } = await api.get(`/messages/${chatGroupId}`, { params: { limit } });
-    set((state) => ({
-      messagesByGroup: { ...state.messagesByGroup, [chatGroupId]: data?.items || [] },
-      pageInfoByGroup: { ...state.pageInfoByGroup, [chatGroupId]: data?.pageInfo || { hasMore: false, before: null } },
-    }));
+    set((st) => ({ loadingMessagesByGroup: { ...st.loadingMessagesByGroup, [chatGroupId]: true } }));
+    try {
+      const { data } = await api.get(`/messages/${chatGroupId}`, { params: { limit } });
+      set((state) => ({
+        messagesByGroup: { ...state.messagesByGroup, [chatGroupId]: data?.items || [] },
+        pageInfoByGroup: { ...state.pageInfoByGroup, [chatGroupId]: data?.pageInfo || { hasMore: false, before: null } },
+      }));
+    } finally {
+      set((st) => ({ loadingMessagesByGroup: { ...st.loadingMessagesByGroup, [chatGroupId]: false } }));
+    }
   },
 
   loadOlder: async (chatGroupId) => {
@@ -183,13 +217,14 @@ export const useMessageStore = create((set, get) => ({
       await sockJoin(groupId);
       await get().fetchMessages(groupId);
       await get().markRead(groupId);
+      await get().refreshPresence(groupId);
       try { localStorage.setItem(ACTIVE_KEY, groupId); } catch {}
     } else {
       try { localStorage.removeItem(ACTIVE_KEY); } catch {}
     }
   },
 
-  // tiny wrapper so your page can still call joinRoom()
+  // wrappers
   joinRoom: async (groupId) => {
     if (!groupId) return { ok: false };
     return await sockJoin(groupId);
@@ -213,7 +248,6 @@ export const useMessageStore = create((set, get) => ({
       console.warn("markRead failed", e?.message || e);
     }
   },
-  // alias for your page
   markAsRead: async (chatGroupId) => get().markRead(chatGroupId),
 
   // ----- SEND (optimistic) -----
@@ -233,7 +267,6 @@ export const useMessageStore = create((set, get) => ({
       __optimistic: true,
     };
 
-    // optimistic append
     set((state) => {
       const list = [...(state.messagesByGroup[chatGroupId] || []), optimistic];
       return { messagesByGroup: { ...state.messagesByGroup, [chatGroupId]: list } };
@@ -242,11 +275,8 @@ export const useMessageStore = create((set, get) => ({
     try {
       await api.post(`/messages/${chatGroupId}`, { ...payload, clientTempId });
     } catch (e) {
-      // rollback
       set((state) => {
-        const list = (state.messagesByGroup[chatGroupId] || []).filter(
-          (m) => m.__clientTempId !== clientTempId
-        );
+        const list = (state.messagesByGroup[chatGroupId] || []).filter((m) => m.__clientTempId !== clientTempId);
         return { messagesByGroup: { ...state.messagesByGroup, [chatGroupId]: list } };
       });
       throw e;
@@ -255,17 +285,26 @@ export const useMessageStore = create((set, get) => ({
 
   // ----- SEARCH & CREATE -----
   searchUsers: async (q) => {
-    const { data } = await api.get("/messages/users", { params: { search: q } });
-    return data || [];
+    const params = q?.trim() ? { search: q.trim() } : {};
+    const { data } = await api.get("/messages/users", { params });
+    return Array.isArray(data) ? data : [];
   },
   createDirect: async (targetUserId) => {
     const { data } = await api.post("/messages/direct", { targetUserId });
     return data;
   },
   createGroup: async (body) => {
-    const { data } = await api.post("/messages/group", body);
-    return data;
-  },
+  const { name, description, memberIds, imageUrl } = body;
+
+  const { data } = await api.post("/messages/group", {
+    name,
+    description: description || "",
+    memberIds,
+    imageUrl: imageUrl || null,
+  });
+
+  return data;
+},
 
   // ----- TYPING -----
   startTyping: (chatGroupId) => {

@@ -28,7 +28,7 @@ dotenv.config();
 const app = express();
 
 // --- CORS (parse env correctly and trim) ---
-const origins = ("http://localhost:3000" || process.env.CORS_ORIGINS)
+const origins = ( process.env.CORS_ORIGINS || "http://localhost:3000")
   .split(",")
   .map(s => s.trim())
   .filter(Boolean);

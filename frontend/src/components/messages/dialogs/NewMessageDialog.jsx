@@ -1,8 +1,9 @@
+// src/components/messages/dialogs/NewMessageDialog.jsx
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Loader2, MessageSquarePlus, X } from "lucide-react";
+import { Search, Loader2, MessageSquarePlus, Users, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,21 +11,31 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
-import api from "@/lib/axios";
+import UserSearchResults from "./UserSearchResults";
+import GroupCreationForm from "./GroupCreationForm";
 import { useMessageStore } from "@/store/messageStore";
 import { useAuthStore } from "@/store/authStore";
 
-const API_PREFIX = (process.env.NEXT_PUBLIC_API_PREFIX) || "";
-const ep = (p) => `${API_PREFIX}${p}`;
+// debounce
+const useDebounced = (v, d = 300) => {
+  const [val, setVal] = useState(v);
+  useEffect(() => {
+    const t = setTimeout(() => setVal(v), d);
+    return () => clearTimeout(t);
+  }, [v, d]);
+  return val;
+};
 
 export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
   const router = useRouter();
   const me = useAuthStore((s) => s.user);
   const fetchThreads = useMessageStore((s) => s.fetchThreads);
+  const searchUsers = useMessageStore((s) => s.searchUsers);
+  const createDirect = useMessageStore((s) => s.createDirect);
+  const createGroup = useMessageStore((s) => s.createGroup);
 
   const [query, setQuery] = useState("");
   const [busyId, setBusyId] = useState(null);
@@ -36,35 +47,42 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
   const [groupMode, setGroupMode] = useState(false);
   const [groupName, setGroupName] = useState("");
 
-  const q = query.trim();
-  const debounced = useDebouncedValue(q, 300);
+  const debounced = useDebounced(query.trim(), 350);
 
   useEffect(() => {
     if (!open) return;
+    // reset each open
+    setQuery("");
     setUsers([]);
     setError(null);
     setSelectedUsers([]);
     setGroupMode(false);
     setGroupName("");
-    setQuery("");
     setLoading(true);
 
-    api
-      .get(ep("/messages/users"), { params: debounced ? { search: debounced } : {} })
-      .then((res) => {
-        const arr = Array.isArray(res?.data) ? res.data : [];
-        setUsers(arr);
-      })
+    searchUsers("")
+      .then((arr) => setUsers(arr.filter((u) => u.id !== me?.id)))
       .catch((e) => setError(e?.response?.data?.error || "Failed to load users"))
       .finally(() => setLoading(false));
-  }, [open, debounced]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(true);
+    searchUsers(debounced)
+      .then((arr) => setUsers(arr.filter((u) => u.id !== me?.id)))
+      .catch((e) => setError(e?.response?.data?.error || "Failed to search users"))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debounced]);
 
   const onStartDM = async (userId) => {
     if (!userId || busyId) return;
     setBusyId(userId);
     setError(null);
     try {
-      const { data } = await api.post(ep("/messages/direct"), { targetUserId: userId });
+      const data = await createDirect(userId);
       const chatId = data?.chatGroup?.id;
       await fetchThreads();
       onOpenChange?.(false);
@@ -82,10 +100,11 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
     setBusy(true);
     setError(null);
     try {
-      const { data } = await api.post(ep("/messages/group"), {
+      const body = {
         name: groupName.trim(),
         memberIds: selectedUsers.map((u) => u.id),
-      });
+      };
+      const data = await createGroup(body);
       const chatId = data?.chatGroup?.id;
       await fetchThreads();
       onOpenChange?.(false);
@@ -106,169 +125,97 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
     );
   };
 
+  const ModeToggle = () => (
+    <div className="inline-flex items-center p-1 space-x-1 bg-muted/50 rounded-lg border border-border/50">
+      <Button
+        variant={!groupMode ? "secondary" : "ghost"}
+        size="sm"
+        onClick={() => setGroupMode(false)}
+        className="w-full shadow-sm"
+      >
+        <User className="w-4 h-4 mr-2" />
+        Direct
+      </Button>
+      <Button
+        variant={groupMode ? "secondary" : "ghost"}
+        size="sm"
+        onClick={() => setGroupMode(true)}
+        className="w-full shadow-sm"
+      >
+        <Users className="w-4 h-4 mr-2" />
+        Group
+      </Button>
+    </div>
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <MessageSquarePlus className="w-5 h-5" />
-            {groupMode ? "Create Group Chat" : "New Message"}
+      <DialogContent className="sm:max-w-md !bg-white border-border/50 shadow-2xl">
+        <DialogHeader className="p-6 pb-4">
+          <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
+            <MessageSquarePlus className="w-5 h-5 text-primary" />
+            New Message
           </DialogTitle>
+          <DialogDescription className="text-muted-foreground">
+            {groupMode ? "Select members and name your group." : "Find someone to message directly."}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 flex flex-col min-h-0 space-y-4">
-          {/* Mode toggle */}
-          <div className="flex gap-2">
-            <Button
-              variant={!groupMode ? "default" : "outline"}
-              size="sm"
-              onClick={() => setGroupMode(false)}
-            >
-              Direct Message
-            </Button>
-            <Button
-              variant={groupMode ? "default" : "outline"}
-              size="sm"
-              onClick={() => setGroupMode(true)}
-            >
-              Group Chat
-            </Button>
-          </div>
+        <div className="flex flex-col space-y-4 px-6">
+          <ModeToggle />
 
-          {/* Group name / chips */}
           {groupMode && (
-            <div>
-              <Input
-                value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
-                placeholder="Group name..."
-                className="mb-2"
-              />
-              {selectedUsers.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {selectedUsers.map((user) => (
-                    <Badge
-                      key={user.id}
-                      variant="secondary"
-                      className="gap-1 cursor-pointer"
-                      onClick={() => toggleUserSelection(user)}
-                    >
-                      {user.username}
-                      <X className="w-3 h-3" />
-                    </Badge>
-                  ))}
-                </div>
-              )}
-            </div>
+            <GroupCreationForm
+              groupName={groupName}
+              setGroupName={setGroupName}
+              selectedUsers={selectedUsers}
+              onRemoveUser={toggleUserSelection}
+            />
           )}
 
-          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search username…"
-              className="pl-9"
+              placeholder="Search by username…"
+              className="pl-9 border-2 focus-visible:ring-2 focus-visible:ring-primary/50"
               autoFocus
             />
           </div>
-
-          {/* Results */}
-          <div className="max-h-80 overflow-y-auto mt-3 rounded-md border bw-scroll">
-            {loading ? (
-              <div className="flex items-center justify-center py-10 text-muted-foreground">
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Searching…
-              </div>
-            ) : error ? (
-              <div className="py-6 text-center text-sm text-red-500">{error}</div>
-            ) : users.length === 0 ? (
-              <div className="py-6 text-center text-sm text-muted-foreground">
-                No users found.
-              </div>
-            ) : (
-              <ul className="divide-y">
-                {users.map((u) => {
-                  const selected = !!selectedUsers.find((x) => x.id === u.id);
-                  return (
-                    <li
-                      key={u.id}
-                      className="flex items-center justify-between gap-3 px-3 py-2"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Avatar className="h-8 w-8">
-                          <AvatarImage src={u.avatar || undefined} />
-                          <AvatarFallback>
-                            {u.username?.[0]?.toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <div className="font-medium truncate">@{u.username}</div>
-                          {u.bio && (
-                            <div className="text-xs text-muted-foreground truncate max-w-[220px]">
-                              {u.bio}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => onStartDM(u.id)}
-                          disabled={!!busyId || u.id === me?.id}
-                        >
-                          {busyId === u.id && (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          )}
-                          Message
-                        </Button>
-
-                        {groupMode && (
-                          <Button
-                            size="sm"
-                            variant={selected ? "default" : "outline"}
-                            onClick={() => toggleUserSelection(u)}
-                          >
-                            {selected ? "Selected" : "Select"}
-                          </Button>
-                        )}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
-
-          <DialogFooter>
-            {groupMode ? (
-              <Button
-                onClick={onCreateGroup}
-                disabled={busy || !groupName.trim() || selectedUsers.length === 0}
-              >
-                {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-                Create Group
-              </Button>
-            ) : null}
-            <Button variant="secondary" onClick={() => onOpenChange?.(false)}>
-              Close
-            </Button>
-          </DialogFooter>
         </div>
+
+        <div className="px-6 pb-6">
+          <div className="h-72 mt-2 overflow-y-auto rounded-lg border-2 border-border/50 bg-muted/20">
+            <UserSearchResults
+              users={users}
+              loading={loading}
+              error={error}
+              selectedUsers={selectedUsers}
+              groupMode={groupMode}
+              onUserSelect={toggleUserSelection}
+              onStartDM={onStartDM}
+              busyId={busyId}
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="bg-muted/30 p-4 border-t border-border/50">
+          {groupMode && (
+            <Button
+              onClick={onCreateGroup}
+              disabled={busy || !groupName.trim() || selectedUsers.length === 0}
+              className="w-full sm:w-auto"
+            >
+              {busy && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Create Group ({selectedUsers.length})
+            </Button>
+          )}
+          <Button variant="outline" onClick={() => onOpenChange?.(false)}>
+            Cancel
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
-}
-
-function useDebouncedValue(value, delay = 300) {
-  const [val, setVal] = useState(value);
-  const tRef = useRef(null);
-  useEffect(() => {
-    clearTimeout(tRef.current);
-    tRef.current = setTimeout(() => setVal(value), delay);
-    return () => clearTimeout(tRef.current);
-  }, [value, delay]);
-  return val;
 }
