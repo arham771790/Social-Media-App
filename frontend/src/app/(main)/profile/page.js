@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { Camera, Edit3, Grid, Heart, Users, Calendar, MapPin, Link as LinkIcon, MoreHorizontal, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -503,138 +503,137 @@ export default function ProfilePage() {
 
         {/* Enhanced Edit Profile Dialog */}
         <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-          <DialogContent className="max-w-lg bg-card/95 backdrop-blur-sm border-0 shadow-2xl">
-            <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">Edit Profile</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-6">
-              {/* Avatar Upload */}
-              <div className="flex items-center space-x-4">
-                <Avatar className="w-20 h-20 border-4 border-background shadow-lg">
-                  <AvatarImage src={avatarPreview || me.avatar || undefined} />
-                  <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-2xl font-bold">
-                    {me.username?.charAt(0).toUpperCase() || 'U'}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <Label htmlFor="avatar-upload" className="cursor-pointer">
-                    <Button variant="outline" size="sm" asChild disabled={isUploading}>
-                      <span>
-                        {isUploading ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
-                            Uploading…
-                          </>
-                        ) : (
-                          'Change photo'
-                        )}
-                      </span>
-                    </Button>
-                  </Label>
-                  <Input
-                    id="avatar-upload"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleAvatarChange}
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">Max 5MB</p>
-                </div>
-              </div>
+  <DialogContent className="sm:max-w-md !bg-white border-border/50 shadow-2xl">
+    <DialogHeader className="p-6 pb-4">
+      <DialogTitle className="text-xl font-semibold">Edit Profile</DialogTitle>
+      <DialogDescription className="text-muted-foreground">
+        Update your details and profile photo.
+      </DialogDescription>
+    </DialogHeader>
 
-              {/* Bio */}
-              <div className="space-y-2">
-                <Label htmlFor="bio">Bio</Label>
-                <Textarea
-                  id="bio"
-                  value={editForm.bio}
-                  onChange={(e) => setEditForm((p) => ({ ...p, bio: e.target.value }))}
-                  placeholder="Tell us about yourself..."
-                  className="bg-background/50 border-border/50 focus:border-primary/50 transition-colors"
-                  rows={3}
-                  maxLength={150}
-                />
-                <p className="text-xs text-muted-foreground text-right">
-                  {editForm.bio.length}/150
-                </p>
-              </div>
+    <div className="flex flex-col space-y-6 px-6">
+      {/* Avatar Upload */}
+      <div className="flex items-center space-x-4">
+        <Avatar className="w-20 h-20 border-4 border-white shadow">
+          <AvatarImage src={avatarPreview || me.avatar || undefined} />
+          <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/10 text-2xl font-bold">
+            {me.username?.charAt(0).toUpperCase() || 'U'}
+          </AvatarFallback>
+        </Avatar>
+        <div>
+          <Label htmlFor="avatar-upload" className="cursor-pointer">
+            <Button variant="outline" size="sm" asChild disabled={isUploading}>
+              <span>
+                {isUploading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
+                    Uploading…
+                  </>
+                ) : (
+                  'Change photo'
+                )}
+              </span>
+            </Button>
+          </Label>
+          <Input
+            id="avatar-upload"
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleAvatarChange}
+          />
+          <p className="text-xs text-muted-foreground mt-1">Max 5MB</p>
+        </div>
+      </div>
 
-              {/* Location */}
-              <div className="space-y-2">
-                <Label htmlFor="location">Location</Label>
-                <Input
-                  id="location"
-                  value={editForm.location}
-                  onChange={(e) => setEditForm((p) => ({ ...p, location: e.target.value }))}
-                  placeholder="Where are you from?"
-                  className="bg-background/50 border-border/50 focus:border-primary/50 transition-colors"
-                />
-              </div>
+      {/* Bio */}
+      <div className="space-y-2">
+        <Label htmlFor="bio">Bio</Label>
+        <Textarea
+          id="bio"
+          value={editForm.bio}
+          onChange={(e) => setEditForm((p) => ({ ...p, bio: e.target.value }))}
+          placeholder="Tell us about yourself..."
+          className="bg-white border-2 focus-visible:ring-2 focus-visible:ring-primary/50"
+          rows={3}
+          maxLength={150}
+        />
+        <p className="text-xs text-muted-foreground text-right">
+          {editForm.bio.length}/150
+        </p>
+      </div>
 
-              {/* Website */}
-              <div className="space-y-2">
-                <Label htmlFor="website">Website</Label>
-                <Input
-                  id="website"
-                  type="url"
-                  value={editForm.website}
-                  onChange={(e) => setEditForm((p) => ({ ...p, website: e.target.value }))}
-                  placeholder="https://yourwebsite.com"
-                  className="bg-background/50 border-border/50 focus:border-primary/50 transition-colors"
-                />
-              </div>
+      {/* Location */}
+      <div className="space-y-2">
+        <Label htmlFor="location">Location</Label>
+        <Input
+          id="location"
+          value={editForm.location}
+          onChange={(e) => setEditForm((p) => ({ ...p, location: e.target.value }))}
+          placeholder="Where are you from?"
+          className="bg-white border-2 focus-visible:ring-2 focus-visible:ring-primary/50"
+        />
+      </div>
 
-              {/* Public Account Toggle */}
-              <div className="flex items-center justify-between p-4 rounded-lg bg-muted/30">
-                <div className="space-y-1">
-                  <Label htmlFor="public-account" className="font-medium">Public Account</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Anyone can see your profile and posts
-                  </p>
-                </div>
-                <Switch
-                  id="public-account"
-                  checked={editForm.isPublic}
-                  onCheckedChange={(checked) => setEditForm((p) => ({ ...p, isPublic: checked }))}
-                />
-              </div>
+      {/* Website */}
+      <div className="space-y-2">
+        <Label htmlFor="website">Website</Label>
+        <Input
+          id="website"
+          type="url"
+          value={editForm.website}
+          onChange={(e) => setEditForm((p) => ({ ...p, website: e.target.value }))}
+          placeholder="https://yourwebsite.com"
+          className="bg-white border-2 focus-visible:ring-2 focus-visible:ring-primary/50"
+        />
+      </div>
 
-              {/* Actions */}
-              <div className="flex justify-end space-x-3 pt-4">
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setEditDialogOpen(false);
-                    setAvatarPreview('');
-                    setAvatarFile(null);
-                    setEditForm({
-                      bio: me.bio || '',
-                      isPublic: me.isPublic ?? true,
-                      location: me.location || '',
-                      website: me.website || '',
-                    });
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button 
-                  onClick={handleSaveProfile} 
-                  disabled={meLoading || isUploading}
-                  className="min-w-[100px]"
-                >
-                  {meLoading || isUploading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                      Saving…
-                    </>
-                  ) : (
-                    'Save Changes'
-                  )}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+      {/* Public Account Toggle */}
+      <div className="flex items-center justify-between p-4 rounded-lg bg-muted/20 border border-border/50">
+        <div className="space-y-1">
+          <Label htmlFor="public-account" className="font-medium">Public Account</Label>
+          <p className="text-xs text-muted-foreground">Anyone can see your profile and posts</p>
+        </div>
+        <Switch
+          className="bg-black border-2 focus-visible:ring-2 focus-visible:ring-primary/50"
+          id="public-account"
+          checked={editForm.isPublic}
+          onCheckedChange={(checked) => setEditForm((p) => ({ ...p, isPublic: checked }))}
+        />
+      </div>
+    </div>
+
+    <DialogFooter className="bg-muted/30 p-4 border-t border-border/50">
+      <Button
+        variant="outline"
+        onClick={() => {
+          setEditDialogOpen(false);
+          setAvatarPreview('');
+          setAvatarFile(null);
+          setEditForm({
+            bio: me.bio || '',
+            isPublic: me.isPublic ?? true,
+            location: me.location || '',
+            website: me.website || '',
+          });
+        }}
+      >
+        Cancel
+      </Button>
+      <Button onClick={handleSaveProfile} disabled={meLoading || isUploading} className="min-w-[120px]">
+        {meLoading || isUploading ? (
+          <>
+            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+            Saving…
+          </>
+        ) : (
+          'Save Changes'
+        )}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
       </div>
     </div>
   );

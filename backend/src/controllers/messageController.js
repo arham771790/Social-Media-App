@@ -88,6 +88,7 @@ export const getChatThreads = async (req, res) => {
           : null,
         unread: unreadCounts[i] || 0,
         members: g.members.map((m) => ({ id: m.id, username: m.username, avatar: m.avatar })),
+        adminIds: (g.admins || []).map(a => a.id),
         createdAt: g.createdAt,
       };
     });
@@ -194,9 +195,10 @@ export const createDirectChat = async (req, res) => {
 
 // controllers/message.controller.js
 
+// controllers/messageController.js
 export const createGroupChat = async (req, res) => {
   try {
-    const { name, memberIds } = req.body;
+    const { name, memberIds = [], description = "", imageUrl = null } = req.body;
 
     // Validate
     if (!name || !Array.isArray(memberIds) || memberIds.length < 2) {
@@ -205,62 +207,81 @@ export const createGroupChat = async (req, res) => {
       });
     }
 
-    // Ensure the creator is always in the group
+    // Ensure the creator is always a member
     if (!memberIds.includes(req.userId)) {
       memberIds.push(req.userId);
     }
 
-    // Create the group chat
+    // Create the group chat (make creator an admin)
     const groupChat = await prisma.chatGroup.create({
       data: {
+        type: "GROUP",
         name,
-        members: {
-          connect: memberIds.map((id) => ({ id })),
-        },
+        description,
+        imageUrl,
         createdBy: { connect: { id: req.userId } },
+        members:   { connect: memberIds.map((id) => ({ id })) },
+        admins:    { connect: { id: req.userId } }, // ✅ creator is admin
+        lastActivityAt: new Date(),
       },
       include: {
         members: true,
+        admins: true,
         createdBy: true,
       },
     });
 
-    return res.status(201).json(groupChat);
+    return res.status(201).json({
+      chatGroup: {
+        id: groupChat.id,
+        name: groupChat.name,
+        type: groupChat.type,
+        avatar: groupChat.imageUrl ?? null,
+        members: groupChat.members.map(m => ({ id: m.id, username: m.username, avatar: m.avatar })),
+        adminIds: (groupChat.admins || []).map(a => a.id),
+        createdAt: groupChat.createdAt,
+      },
+    });
   } catch (error) {
     console.error("createGroupChat error:", error);
     return res.status(500).json({ error: "Internal Server Error" });
   }
 };
+
 // Remove a member (admin-only)
+// Remove a member (admin-only for removing others; self-removal allowed)
 export const removeGroupMember = async (req, res) => {
   try {
     const { chatGroupId, memberId } = req.params;
     const userId = req.userId;
 
-    // Only an admin can remove
     const group = await prisma.chatGroup.findUnique({
       where: { id: chatGroupId },
       include: { admins: true },
     });
 
     if (!group) return res.status(404).json({ error: "Group not found" });
-    if (!group.admins.find((a) => a.id === userId)) {
-      return res.status(403).json({ error: "Only admins can remove members" });
+
+    const isAdmin = !!group.admins.find((a) => a.id === userId);
+    const isSelf = String(memberId) === String(userId);
+
+    if (!isAdmin && !isSelf) {
+      return res.status(403).json({ error: "Only admins can remove other members" });
     }
 
     await prisma.chatGroup.update({
       where: { id: chatGroupId },
-      data: { members: { disconnect: { id: memberId } } },
+      data: { members: { disconnect: { id: memberId } }, admins: { disconnect: { id: memberId } } },
     });
 
     io.to(chatGroupId).emit("group:memberRemoved", { chatGroupId, memberId });
-
     res.json({ ok: true });
   } catch (err) {
     console.error("removeGroupMember error", err);
     res.status(500).json({ error: "Failed to remove member" });
   }
 };
+
 
 // Add new members (admin-only)
 export const addGroupMembers = async (req, res) => {
@@ -360,7 +381,7 @@ export const sendMessage = async (req, res) => {
   try {
     const { chatGroupId } = req.params;
     const userId = req.userId;
-    const { content, mediaUrl, clientTempId } = req.body || {};
+    const { content, mediaUrl, clientTempId, mimeType, fileType } = req.body || {};
 
     if (!content && !mediaUrl) {
       return res.status(StatusCodes.BAD_REQUEST).json({ error: "Message content or media is required" });
@@ -369,7 +390,18 @@ export const sendMessage = async (req, res) => {
     const isMember = await ensureMembership(chatGroupId, userId);
     if (!isMember) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied to this chat" });
 
-    const type = inferMessageType(mediaUrl);
+   let type = "TEXT";
+if (mediaUrl) {
+  if (fileType) {
+    type = fileType.toUpperCase(); // "IMAGE" | "VIDEO" | "FILE"
+  } else if (mimeType?.startsWith("image/")) {
+    type = "IMAGE";
+  } else if (mimeType?.startsWith("video/")) {
+    type = "VIDEO";
+  } else {
+    type = "FILE";
+  }
+}
 
     // Create message, then bump thread & lastMessageId
     const message = await prisma.message.create({

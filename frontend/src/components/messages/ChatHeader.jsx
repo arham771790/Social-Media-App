@@ -1,3 +1,4 @@
+// src/components/messages/ChatHeader.jsx
 "use client";
 
 import { useState } from "react";
@@ -15,6 +16,7 @@ export default function ChatHeader({
   onBack,
   showBackOnMobile,
   hasActive,
+  onToggleInfo = () => {}, // ✅ add default no-op
 }) {
   const [callOpen, setCallOpen] = useState(false);
   const [mode, setMode] = useState("audio");
@@ -22,11 +24,15 @@ export default function ChatHeader({
   const onlineIds = useMessageStore((s) => s.onlineUserIds);
 
   if (!thread) {
-    return <div className="h-16 border-b border-border bg-background/60 backdrop-blur" />;
+    return (
+      <div className="h-16 border-b border-border bg-background/60 backdrop-blur" />
+    );
   }
 
   const name = thread?.name;
-  const memberCount = Array.isArray(thread?.members) ? thread.members.length : 0;
+  const memberCount = Array.isArray(thread?.members)
+    ? thread.members.length
+    : 0;
 
   const myId = String(me?.id ?? "");
   const other =
@@ -43,16 +49,28 @@ export default function ChatHeader({
         <div className="flex items-center gap-3 min-w-0 flex-1">
           {/* Mobile: Back or Menu */}
           {showBackOnMobile && hasActive ? (
-            <Button variant="ghost" size="icon" className="md:hidden" onClick={onBack}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              onClick={onBack}
+              aria-label="Back"
+            >
               <ArrowLeft className="w-5 h-5" />
             </Button>
           ) : (
-            <Button variant="ghost" size="icon" className="md:hidden" onClick={onToggleSidebar}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              onClick={onToggleSidebar}
+              aria-label="Open conversations"
+            >
               <Menu className="w-5 h-5" />
             </Button>
           )}
 
-          {/* Avatar (no status dot here) */}
+          {/* Avatar */}
           <div className="relative">
             <Avatar className="w-9 h-9 md:w-10 md:h-10">
               <AvatarImage src={thread?.avatar || undefined} />
@@ -71,7 +89,11 @@ export default function ChatHeader({
               )}
             </div>
             <div className="text-xs text-muted-foreground">
-              {thread?.type === "DIRECT" ? (otherOnline ? "Online" : "Offline") : `${memberCount} members`}
+              {thread?.type === "DIRECT"
+                ? otherOnline
+                  ? "Online"
+                  : "Offline"
+                : `${memberCount} members`}
             </div>
           </div>
         </div>
@@ -86,6 +108,7 @@ export default function ChatHeader({
               setCallOpen(true);
             }}
             title="Audio call"
+            aria-label="Audio call"
             disabled={!callEnabled}
           >
             <Phone className="w-5 h-5" />
@@ -98,11 +121,18 @@ export default function ChatHeader({
               setCallOpen(true);
             }}
             title="Video call"
+            aria-label="Video call"
             disabled={!callEnabled}
           >
             <Video className="w-5 h-5" />
           </Button>
-          <Button size="icon" variant="ghost" title="Chat info">
+          <Button
+            size="icon"
+            variant="ghost"
+            title="Chat info"
+            aria-label="Chat info"
+            onClick={onToggleInfo} // ✅ this triggers your Info dialog/panel
+          >
             <Info className="w-5 h-5" />
           </Button>
         </div>

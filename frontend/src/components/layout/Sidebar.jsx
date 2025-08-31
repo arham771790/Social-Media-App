@@ -64,8 +64,8 @@ export default function Sidebar() {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gradient-to-b from-gray-900 to-black border-r border-gray-800/50 backdrop-blur-sm">
-      {/* Header */}
+     <div className="hidden lg:flex flex-col h-full w-64 bg-gradient-to-b from-gray-900 to-black border-r border-gray-800/50 backdrop-blur-sm">
+    {/* Header */}
       <div className="p-6">
         <div className="flex items-center justify-between">
           <Link href="/feed" className="flex items-center space-x-2 group">

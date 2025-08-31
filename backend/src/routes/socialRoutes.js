@@ -12,6 +12,7 @@ import {
   addContact,
   createStory,
   getStories,
+  deleteStory,
   getFollowRequests,
 } from "../controllers/socialController.js";
 
@@ -38,5 +39,5 @@ router.post("/contacts/:id", addContact);
 // stories (optional)
 router.post("/stories", createStory);
 router.get("/stories/:id?", getStories);
-
+router.delete("/stories/:storyId", deleteStory); // ⬅️ new
 export default router;

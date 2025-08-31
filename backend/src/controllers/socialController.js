@@ -320,6 +320,7 @@ export const getContacts = async (req, res) => {
           STORIES
 ----------------------------------- */
 
+// Create story
 export const createStory = async (req, res) => {
   try {
     const userId = req.userId;
@@ -336,10 +337,13 @@ export const createStory = async (req, res) => {
         userId,
         mediaUrl,
         type,
-        caption,
+        caption: caption || null,
         isPublic: typeof isPublic === "boolean" ? isPublic : true,
         createdAt: now,
         expiresAt,
+      },
+      include: {
+        user: { select: { id: true, username: true, avatar: true } },
       },
     });
 
@@ -350,9 +354,10 @@ export const createStory = async (req, res) => {
   }
 };
 
+// Get stories: public OR by user id (and not expired)
 export const getStories = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { id } = req.params; // optional
     const now = new Date();
 
     const where = id
@@ -362,12 +367,41 @@ export const getStories = async (req, res) => {
     const stories = await prisma.story.findMany({
       where,
       orderBy: { createdAt: "desc" },
+      include: {
+        user: { select: { id: true, username: true, avatar: true } },
+      },
     });
 
     return res.status(StatusCodes.OK).json(stories);
   } catch (err) {
     console.error("getStories error:", err);
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to fetch stories." });
+  }
+};
+
+// Delete story (owner only)
+export const deleteStory = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const { storyId } = req.params;
+
+    const story = await prisma.story.findUnique({
+      where: { id: storyId },
+      select: { id: true, userId: true },
+    });
+
+    if (!story) {
+      return res.status(StatusCodes.NOT_FOUND).json({ error: "Story not found." });
+    }
+    if (story.userId !== userId) {
+      return res.status(StatusCodes.FORBIDDEN).json({ error: "Not allowed." });
+    }
+
+    await prisma.story.delete({ where: { id: storyId } });
+    return res.status(StatusCodes.OK).json({ ok: true });
+  } catch (err) {
+    console.error("deleteStory error:", err);
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to delete story." });
   }
 };
 export const getFollowRequests = async (req, res) => {

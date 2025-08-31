@@ -38,52 +38,59 @@ export default function ConversationList({
   };
 
   return (
-         <div className="flex flex-col h-full bg-card">
+    <div className="flex flex-col h-full bg-card w-full">
       {/* Header */}
-             <div className="px-6 py-4 border-b border-border/50 flex items-center justify-between bg-gradient-to-r from-background to-muted/20">
-        <div className="flex items-center gap-3">
-          <h2 className="text-xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">Messages</h2>
-          {totalUnread > 0 && (
-            <Badge variant="default" className="text-xs shadow-lg animate-pulse">
-              {totalUnread > 99 ? "99+" : totalUnread}
-            </Badge>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Button size="sm" variant="gradient" onClick={onNew} className="gap-2 shadow-sm hover:shadow-md transition-all duration-200">
-            <MessageSquarePlus className="w-4 h-4" />
+      <div className="sticky top-0 z-10 px-4 sm:px-6 py-3 sm:py-4 border-b border-border/50 flex items-center justify-between bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <h2 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
+          Messages
+        </h2>
+
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={onNew}
+            className="rounded-full shadow-sm hover:shadow-md transition-all duration-200 px-3 h-9"
+            variant="gradient"
+          >
+            <MessageSquarePlus className="h-4 w-4 sm:mr-1" />
             <span className="hidden sm:inline">New</span>
           </Button>
+
           <Button
-            size="sm"
-            variant="outline"
             onClick={() => setGroupOpen(true)}
-            className="hidden sm:flex gap-2 hover:bg-primary/10 hover:border-primary/50 transition-all duration-200"
+            className="h-9 w-9 sm:w-auto sm:px-3 rounded-full hover:bg-primary/10 hover:border-primary/50 transition-all duration-200"
+            variant="outline"
+            aria-label="New group"
           >
-            <Users className="w-4 h-4" />
-            Group
+            <Users className="h-4 w-4 sm:mr-1" />
+            <span className="hidden md:inline">Group</span>
           </Button>
         </div>
       </div>
 
-      {/* Loading */}
-      {isLoading && !hasThreads && (
-        <div className="flex-1 p-6 space-y-4">
-                     {Array.from({ length: 5 }).map((_, i) => (
-             <div key={i} className="flex items-center gap-4 p-4">
-               <Skeleton className="w-12 h-12 rounded-full" />
-               <div className="flex-1 space-y-3">
-                 <Skeleton className="h-4 w-28" />
-                 <Skeleton className="h-3 w-36" />
-               </div>
-             </div>
-           ))}
-        </div>
-      )}
-
-      {/* List */}
-      {hasThreads ? (
-        <div className="flex-1 overflow-y-auto">
+      {/* Scrollable list */}
+      <div
+        className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar"
+        style={{ maxHeight: "calc(100vh - 120px)" }} // ✅ ensures desktop scroll
+      >
+        {isLoading ? (
+          <ul className="divide-y divide-border">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <li
+                key={i}
+                className="flex items-center gap-4 px-4 sm:px-6 py-3 sm:py-4"
+              >
+                <Skeleton className="w-10 h-10 sm:w-12 sm:h-12 rounded-full" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-3 w-10" />
+                  </div>
+                  <Skeleton className="h-3 w-40" />
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : hasThreads ? (
           <ul className="divide-y divide-border">
             {threads.map((t) => {
               const name = t.name || "Unknown";
@@ -95,24 +102,27 @@ export default function ConversationList({
                 <li
                   key={t.id}
                   onClick={() => onPick(t.id)}
-                                     className={`flex items-center gap-4 px-6 py-4 cursor-pointer transition-all duration-200 hover:bg-muted/30 ${
-                     isActive ? "bg-gradient-to-r from-primary/10 to-primary/5 border-r-2 border-primary shadow-sm" : ""
-                   }`}
+                  className={[
+                    "flex items-center gap-3 sm:gap-4 px-4 sm:px-6 py-3 sm:py-4 cursor-pointer transition-colors duration-200 hover:bg-muted/30",
+                    isActive
+                      ? "bg-gradient-to-r from-primary/10 to-primary/5 border-r-2 border-primary shadow-sm"
+                      : "",
+                  ].join(" ")}
                 >
                   {/* Avatar */}
-                  <div className="relative">
-                    <Avatar className="w-12 h-12 ring-2 ring-border/20 shadow-sm">
+                  <div className="relative shrink-0">
+                    <Avatar className="w-10 h-10 sm:w-12 sm:h-12 ring-2 ring-border/20 shadow-sm">
                       <AvatarImage src={t.avatar || undefined} />
                       <AvatarFallback className="bg-gradient-to-r from-primary/20 to-primary/10 text-primary font-semibold">
                         {t.type === "GROUP" ? (
-                          <Users className="w-6 h-6" />
+                          <Users className="w-5 h-5 sm:w-6 sm:h-6" />
                         ) : (
                           name[0]?.toUpperCase()
                         )}
                       </AvatarFallback>
                     </Avatar>
                     {online && (
-                      <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-green-500 border-2 border-card shadow-sm animate-pulse" />
+                      <span className="absolute bottom-0 right-0 w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full bg-green-500 border-2 border-card shadow-sm" />
                     )}
                   </div>
 
@@ -126,9 +136,9 @@ export default function ConversationList({
                       >
                         {name}
                       </span>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1.5 sm:gap-2">
                         {lastMessageTime && (
-                          <span className="text-xs text-muted-foreground">
+                          <span className="text-[10px] sm:text-xs text-muted-foreground whitespace-nowrap">
                             {formatDistanceToNow(new Date(lastMessageTime), {
                               addSuffix: false,
                             })}
@@ -137,7 +147,7 @@ export default function ConversationList({
                         {t.unread > 0 && (
                           <Badge
                             variant="default"
-                            className="text-xs min-w-[20px] h-5 px-1.5"
+                            className="text-[10px] sm:text-xs min-w-[18px] sm:min-w-[20px] h-4 sm:h-5 px-1"
                           >
                             {t.unread > 99 ? "99+" : t.unread}
                           </Badge>
@@ -145,8 +155,7 @@ export default function ConversationList({
                       </div>
                     </div>
 
-                    {/* Last message preview */}
-                    <div className="text-xs text-muted-foreground truncate">
+                    <div className="text-[11px] sm:text-xs text-muted-foreground truncate max-w-full">
                       {t.lastMessage ? (
                         <>
                           {t.lastMessage.sender?.username &&
@@ -175,24 +184,29 @@ export default function ConversationList({
               );
             })}
           </ul>
-        </div>
-      ) : !isLoading ? (
-                 <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
-           <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
-            <MessageSquarePlus className="w-8 h-8 text-muted-foreground" />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-8 text-center space-y-4">
+            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-muted flex items-center justify-center">
+              <MessageSquarePlus className="w-7 h-7 sm:w-8 sm:h-8 text-muted-foreground" />
+            </div>
+            <div className="space-y-1 sm:space-y-2">
+              <h3 className="font-semibold text-sm sm:text-base">
+                No conversations yet
+              </h3>
+              <p className="text-xs sm:text-sm text-muted-foreground max-w-[220px] sm:max-w-sm">
+                Start a conversation with someone to see your messages here.
+              </p>
+            </div>
+            <Button
+              onClick={onNew}
+              className="gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full"
+            >
+              <MessageSquarePlus className="w-4 h-4" />
+              <span className="hidden sm:inline">Start messaging</span>
+            </Button>
           </div>
-          <div className="space-y-2">
-            <h3 className="font-semibold">No conversations yet</h3>
-            <p className="text-sm text-muted-foreground max-w-sm">
-              Start a conversation with someone to see your messages here.
-            </p>
-          </div>
-          <Button onClick={onNew} className="gap-2">
-            <MessageSquarePlus className="w-4 h-4" />
-            Start messaging
-          </Button>
-        </div>
-      ) : null}
+        )}
+      </div>
 
       <NewGroupDialog
         open={groupOpen}

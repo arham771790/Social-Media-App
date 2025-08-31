@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { format } from "date-fns";
 import { useMessageStore } from "@/store/messageStore";
@@ -20,15 +21,42 @@ export default function MessageList({ messages = [], meId, chatGroupId }) {
 
         let mediaEl = null;
         if (hasMedia) {
-          if (msg.mediaUrl.match(/\.(jpeg|jpg|png|gif|webp)$/i)) {
-            mediaEl = <img src={msg.mediaUrl} className="rounded max-w-[200px] max-h-[200px] object-cover" />;
-          } else if (msg.mediaUrl.match(/\.(mp4|webm|ogg)$/i)) {
-            mediaEl = <video src={msg.mediaUrl} controls className="rounded max-w-[250px] max-h-[200px]" />;
-          } else if (msg.mediaUrl.match(/\.(mp3|wav|ogg)$/i)) {
-            mediaEl = <audio src={msg.mediaUrl} controls className="w-40" />;
+          if (msg.mediaType?.startsWith("image/")) {
+            mediaEl = (
+              <div className="relative w-[250px] h-[250px] cursor-pointer">
+                <Image
+                  src={msg.mediaUrl}
+                  alt="attachment"
+                  fill
+                  className="rounded-xl object-cover"
+                  onClick={() => window.open(msg.mediaUrl, "_blank")}
+                />
+              </div>
+            );
+          } else if (msg.mediaType?.startsWith("video/")) {
+            mediaEl = (
+              <video
+                src={msg.mediaUrl}
+                controls
+                className="rounded-xl max-w-[300px] max-h-[200px]"
+              />
+            );
+          } else if (msg.mediaType?.startsWith("audio/")) {
+            mediaEl = (
+              <audio
+                src={msg.mediaUrl}
+                controls
+                className="w-48"
+              />
+            );
           } else {
             mediaEl = (
-              <a href={msg.mediaUrl} target="_blank" rel="noopener noreferrer" className="underline">
+              <a
+                href={msg.mediaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline text-blue-600 hover:text-blue-800"
+              >
                 📎 Attachment
               </a>
             );
@@ -67,7 +95,7 @@ export default function MessageList({ messages = [], meId, chatGroupId }) {
 
       {/* 🔥 Typing indicator */}
       {typingUsers.length > 0 && (
-        <div className="flex items-center gap-2  text-amber-700 text-sm text-muted-foreground pl-10">
+        <div className="flex items-center gap-2 text-amber-700 text-sm text-muted-foreground pl-10">
           <div className="bg-muted px-3 py-1 rounded-2xl animate-pulse">
             {typingUsers.join(", ")} {typingUsers.length > 1 ? "are" : "is"} typing…
           </div>

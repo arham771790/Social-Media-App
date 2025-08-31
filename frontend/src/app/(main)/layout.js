@@ -1,10 +1,9 @@
 'use client';
-
 import AuthGuard from '@/components/AuthGuard';
 import Sidebar from '@/components/layout/Sidebar';
 import RightSidebar from '@/components/layout/RightSidebar';
 import MobileNavbar from '@/components/layout/MobileNavbar';
-
+import Stories from '@/components/stories/Stories';
 
 export default function MainLayout({ children }) {
   return (
@@ -22,10 +21,16 @@ export default function MainLayout({ children }) {
           <div className="flex-1 md:ml-20 lg:ml-64">
             <div className="max-w-6xl mx-auto flex">
               {/* Center */}
-              <main className="flex-1 w-full px-3 sm:px-4 md:px-6 py-6">
-                {/* CreatePost only once on desktop */}
-              
-                {children}
+              <main className="flex-1 w-full">
+                {/* Stories Section - Desktop */}
+                <div className="sticky top-0 z-30 bg-black">
+                  <Stories />
+                </div>
+                
+                {/* Main Content */}
+                <div className="px-3 sm:px-4 md:px-6 py-6">
+                  {children}
+                </div>
               </main>
 
               {/* Right Sidebar (only xl and up) */}
@@ -49,9 +54,12 @@ export default function MainLayout({ children }) {
             </div>
           </header>
 
+          {/* Stories Section - Mobile */}
+          <div className="sticky top-[60px] z-30 bg-black">
+            <Stories />
+          </div>
+
           <main className="flex-1 px-4 py-4 pb-20">
-            {/* CreatePost only once on mobile */}
-            
             {children}
           </main>
 

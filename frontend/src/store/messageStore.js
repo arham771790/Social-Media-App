@@ -24,6 +24,8 @@ const getUser = () => {
   try { const u = useAuthStore.getState().user; if (u) return u; } catch {}
   try { return JSON.parse(localStorage.getItem("user") || "{}"); } catch { return {}; }
 };
+const setGroupBusy = (chatGroupId, busy, set) =>
+  set((st) => ({ groupBusyById: { ...st.groupBusyById, [chatGroupId]: !!busy } }));
 
 export const useMessageStore = create((set, get) => ({
   // connection state
@@ -45,6 +47,10 @@ export const useMessageStore = create((set, get) => ({
   // messages per room (ASC)
   messagesByGroup: {},                 // { [groupId]: Message[] }
   pageInfoByGroup: {},                 // { [groupId]: { hasMore, before } }
+ // group settings state
+groupBusyById: {},              // { [groupId]: boolean }  // for add/remove spinners
+groupDetailsById: {},           // optional cache if you later add a /messages/:id/details endpoint
+
 
   // ----- SOCKET BIND -----
   bindSocket: (token) => {
@@ -273,7 +279,8 @@ export const useMessageStore = create((set, get) => ({
     });
 
     try {
-      await api.post(`/messages/${chatGroupId}`, { ...payload, clientTempId });
+      await api.post(`/messages/${chatGroupId}`, { ...payload, clientTempId,mimeType: payload.mimeType,
+  fileType: payload.fileType, });
     } catch (e) {
       set((state) => {
         const list = (state.messagesByGroup[chatGroupId] || []).filter((m) => m.__clientTempId !== clientTempId);
@@ -284,16 +291,45 @@ export const useMessageStore = create((set, get) => ({
   },
 
   // ----- SEARCH & CREATE -----
-  searchUsers: async (q) => {
-    const params = q?.trim() ? { search: q.trim() } : {};
-    const { data } = await api.get("/messages/users", { params });
-    return Array.isArray(data) ? data : [];
-  },
-  createDirect: async (targetUserId) => {
-    const { data } = await api.post("/messages/direct", { targetUserId });
-    return data;
-  },
-  createGroup: async (body) => {
+  // ----- SEARCH & CREATE -----
+searchUsers: async (q) => {
+  const params = q?.trim() ? { search: q.trim() } : {};
+  const { data } = await api.get("/messages/users", { params });
+  return Array.isArray(data) ? data : [];
+},
+
+createDirect: async (targetUserId) => {
+  const { data } = await api.post("/messages/direct", { targetUserId });
+
+  const t = data?.chatGroup;
+  if (!t) return data;
+
+  // Normalize into thread shape
+  const newThread = {
+    id: t.id,
+    name: t.name,
+    type: "DIRECT",
+    avatar: t.avatar || null,
+    members: (t.members || []).map((m) => ({
+      id: m.id,
+      username: m.username,
+      avatar: m.avatar,
+    })),
+    lastMessage: null,
+    unread: 0,
+    createdAt: t.createdAt || new Date().toISOString(),
+  };
+
+  // Insert at top if not already in list
+  set((st) => {
+    const exists = st.threads.find((thr) => thr.id === newThread.id);
+    return exists ? {} : { threads: [newThread, ...st.threads] };
+  });
+
+  return { chatGroup: newThread };
+},
+
+createGroup: async (body) => {
   const { name, description, memberIds, imageUrl } = body;
 
   const { data } = await api.post("/messages/group", {
@@ -303,7 +339,148 @@ export const useMessageStore = create((set, get) => ({
     imageUrl: imageUrl || null,
   });
 
-  return data;
+  const newThread = {
+    id: data.id,
+    name: data.name,
+    type: data.type || "GROUP",
+    avatar: data.imageUrl || null,
+    members: (data.members || []).map((m) => ({
+      id: m.id,
+      username: m.username,
+      avatar: m.avatar,
+    })),
+    lastMessage: null,
+    unread: 0,
+    createdAt: data.createdAt || new Date().toISOString(),
+  };
+
+  set((st) => {
+    const exists = st.threads.find((thr) => thr.id === newThread.id);
+    return exists ? {} : { threads: [newThread, ...st.threads] };
+  });
+
+  return { chatGroup: newThread };
+},
+
+// ----- GROUP SETTINGS -----
+addGroupMembersAction: async (chatGroupId, memberIds = []) => {
+  if (!chatGroupId || !memberIds.length) return;
+  setGroupBusy(chatGroupId, true, set);
+  try {
+    // POST /messages/:chatGroupId/members  { memberIds: [...] }
+    const { data } = await api.post(`/messages/${chatGroupId}/members`, { memberIds });
+
+    // 1) Update the thread in-place (members list + lastActivity if backend returns)
+    set((st) => {
+      const threads = [...st.threads];
+      const idx = threads.findIndex((t) => t.id === chatGroupId);
+      if (idx !== -1) {
+        const t = { ...threads[idx] };
+        // If backend returns full members on "data" (controller does include { members: true })
+        // map them to the same shape the sidebar expects:
+        if (Array.isArray(data?.members)) {
+          t.members = data.members.map((m) => ({
+            id: m.id,
+            username: m.username,
+            avatar: m.avatar,
+          }));
+        } else {
+          // Fallback: optimistic append new IDs with empty usernames
+          const existingIds = new Set((t.members || []).map((m) => String(m.id)));
+          const appended = memberIds
+            .filter((id) => !existingIds.has(String(id)))
+            .map((id) => ({ id, username: `user_${id}`, avatar: null }));
+          t.members = [...(t.members || []), ...appended];
+        }
+        threads[idx] = t;
+        return { threads };
+      }
+      return {};
+    });
+
+    // 2) Optional cache if you keep a details panel state:
+    set((st) => ({
+      groupDetailsById: { ...st.groupDetailsById, [chatGroupId]: data || st.groupDetailsById[chatGroupId] },
+    }));
+    return { ok: true, data };
+  } catch (e) {
+    console.error("addGroupMembersAction error", e);
+    throw e;
+  } finally {
+    setGroupBusy(chatGroupId, false, set);
+  }
+},
+
+removeGroupMemberAction: async (chatGroupId, memberId) => {
+  if (!chatGroupId || !memberId) return;
+  setGroupBusy(chatGroupId, true, set);
+  try {
+    // DELETE /messages/:chatGroupId/members/:memberId
+    await api.delete(`/messages/${chatGroupId}/members/${memberId}`);
+
+    // Update the thread list: drop the member from sidebar data
+    set((st) => {
+      const threads = [...st.threads];
+      const idx = threads.findIndex((t) => t.id === chatGroupId);
+      if (idx !== -1) {
+        const t = { ...threads[idx] };
+        t.members = (t.members || []).filter((m) => String(m.id) !== String(memberId));
+        threads[idx] = t;
+        return { threads };
+      }
+      return {};
+    });
+
+    // If you cache details:
+    set((st) => {
+      const details = { ...(st.groupDetailsById || {}) };
+      if (details[chatGroupId]?.members) {
+        details[chatGroupId] = {
+          ...details[chatGroupId],
+          members: details[chatGroupId].members.filter(
+            (m) => String(m.id) !== String(memberId)
+          ),
+        };
+      }
+      return { groupDetailsById: details };
+    });
+
+    return { ok: true };
+  } catch (e) {
+    console.error("removeGroupMemberAction error", e);
+    throw e;
+  } finally {
+    setGroupBusy(chatGroupId, false, set);
+  }
+},
+
+leaveGroupAction: async (chatGroupId) => {
+  if (!chatGroupId) return;
+  setGroupBusy(chatGroupId, true, set);
+  try {
+    // Using the self-removal rule via existing endpoint:
+    const me = getUser();
+    await api.delete(`/messages/${chatGroupId}/members/${me?.id}`);
+
+    // Remove thread locally
+    set((st) => ({ threads: st.threads.filter(t => t.id !== chatGroupId) }));
+
+    // Cleanup caches
+    set((st) => {
+      const mbg = { ...st.messagesByGroup }; delete mbg[chatGroupId];
+      const pib = { ...st.pageInfoByGroup }; delete pib[chatGroupId];
+      return { messagesByGroup: mbg, pageInfoByGroup: pib };
+    });
+
+    // Clear active if needed
+    if (get().activeChatId === chatGroupId) set({ activeChatId: null });
+    return { ok: true };
+  } catch (e) {
+    console.error("leaveGroupAction error", e);
+    throw e;
+  } finally {
+    setGroupBusy(chatGroupId, false, set);
+  }
 },
 
   // ----- TYPING -----
