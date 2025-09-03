@@ -16,6 +16,10 @@ import notificationRoutes from "./routes/notificationRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
 import feedRoutes from "./routes/feedRoutes.js";
 import healthRoutes from "./routes/healthRoutes.js";
+import discoverRoutes from "./routes/discoverRoutes.js";
+import exploreRoutes from "./routes/exploreRoutes.js";
+
+
 // import rtcRoutes from "./routes/rtcRoutes.js"; // optional
 
 import swaggerUi from "swagger-ui-express";
@@ -56,6 +60,8 @@ app.use("/api", messageRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/health", healthRoutes);
+app.use("/api/explore", exploreRoutes);
+app.use("/api/discover", discoverRoutes);
 // app.use("/api/rtc", rtcRoutes); // if added
 
 // --- Swagger (safe load) ---

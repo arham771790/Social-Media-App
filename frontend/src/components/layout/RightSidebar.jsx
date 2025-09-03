@@ -1,113 +1,51 @@
-'use client'
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Skeleton } from '@/components/ui/skeleton'
-import { TrendingUp, Users, Hash } from 'lucide-react'
-import {useAuthStore} from '@/store/authStore'
+'use client';
+import { useEffect } from 'react';
+import Link from 'next/link';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { TrendingUp, Users, Hash } from 'lucide-react';
+import { useSocialStore } from '@/store/socialStore';
 
 export default function RightSidebar() {
-  const { user } = useAuthStore()
-  const [suggestions, setSuggestions] = useState([])
-  const [trending, setTrending] = useState([])
-  const [isLoading, setIsLoading] = useState(true)
+  const {
+    discover,
+    fetchSuggestions,
+    fetchTrending,
+    followUser,
+    unfollowUser,
+  } = useSocialStore();
+
+  // Always default to arrays/objects to avoid `.map` crashes
+  const suggestions = Array.isArray(discover?.suggestions) ? discover.suggestions : [];
+  const trending    = Array.isArray(discover?.trending)    ? discover.trending    : [];
+  const loading     = discover?.loading || { suggestions: false, trending: false };
+  const error       = discover?.error || null;
 
   useEffect(() => {
-    loadSuggestions()
-    loadTrending()
-  }, [])
+    // fire both; swallow errors (store captures error already)
+    fetchSuggestions(6).catch(() => {});
+    fetchTrending(10).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const loadSuggestions = async () => {
+  const handleFollowToggle = async (candidate) => {
     try {
-      // Mock suggestions for now - replace with real API call
-      const mockSuggestions = [
-        {
-          id: 1,
-          username: 'john_doe',
-          profilePicture: null,
-          followersCount: 1234,
-          isFollowing: false
-        },
-        {
-          id: 2,
-          username: 'jane_smith',
-          profilePicture: null,
-          followersCount: 5678,
-          isFollowing: false
-        },
-        {
-          id: 3,
-          username: 'photographer_pro',
-          profilePicture: null,
-          followersCount: 9876,
-          isFollowing: false
-        }
-      ]
-      
-      setTimeout(() => {
-        setSuggestions(mockSuggestions)
-        setIsLoading(false)
-      }, 1000)
-    } catch (error) {
-      console.error('Failed to load suggestions:', error)
-      setIsLoading(false)
+      if (candidate.isFollowing) {
+        await unfollowUser(candidate.id);
+      } else {
+        await followUser(candidate.id);
+      }
+      // optional: refresh suggestions to reflect new state / replace row
+      fetchSuggestions(6).catch(() => {});
+    } catch (e) {
+      console.error('Follow toggle failed', e);
     }
-  }
-
-  const loadTrending = async () => {
-    try {
-      // Mock trending data - replace with real API call
-      const mockTrending = [
-        { id: 1, tag: 'photography', postsCount: 12345 },
-        { id: 2, tag: 'travel', postsCount: 9876 },
-        { id: 3, tag: 'food', postsCount: 8765 },
-        { id: 4, tag: 'nature', postsCount: 7654 },
-        { id: 5, tag: 'fitness', postsCount: 6543 }
-      ]
-      
-      setTimeout(() => {
-        setTrending(mockTrending)
-      }, 1200)
-    } catch (error) {
-      console.error('Failed to load trending:', error)
-    }
-  }
-
-  const handleFollowToggle = async (userId, currentlyFollowing) => {
-    try {
-      // Mock follow/unfollow - replace with real API call
-      setSuggestions(prev => prev.map(suggestion => 
-        suggestion.id === userId 
-          ? { ...suggestion, isFollowing: !currentlyFollowing }
-          : suggestion
-      ))
-    } catch (error) {
-      console.error('Failed to toggle follow:', error)
-    }
-  }
+  };
 
   return (
     <div className="space-y-6">
-      {/* User Profile Summary */}
-      <Card className="bg-gray-900 border-gray-800">
-        <CardContent className="p-4">
-          <div className="flex items-center space-x-3">
-            <Avatar className="w-12 h-12">
-              <AvatarImage src={user?.profilePicture} alt={user?.username} />
-              <AvatarFallback className="bg-gray-700 text-white">
-                {user?.username?.charAt(0).toUpperCase() || 'U'}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1">
-              <p className="font-medium text-white">{user?.username}</p>
-              <p className="text-sm text-gray-400">@{user?.username}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Suggestions */}
       <Card className="bg-gray-900 border-gray-800">
         <CardHeader className="pb-3">
@@ -117,9 +55,9 @@ export default function RightSidebar() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {isLoading ? (
+          {loading.suggestions ? (
             <div className="space-y-3 p-4">
-              {[...Array(3)].map((_, i) => (
+              {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
                     <Skeleton className="w-10 h-10 rounded-full bg-gray-700" />
@@ -132,51 +70,62 @@ export default function RightSidebar() {
                 </div>
               ))}
             </div>
-          ) : (
+          ) : suggestions.length > 0 ? (
             <div className="space-y-0">
-              {suggestions.map((suggestion) => (
-                <div key={suggestion.id} className="flex items-center justify-between p-4 hover:bg-gray-800 transition-colors">
+              {suggestions.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex items-center justify-between p-4 hover:bg-gray-800 transition-colors"
+                >
                   <div className="flex items-center space-x-3">
                     <Avatar className="w-10 h-10">
-                      <AvatarImage src={suggestion.profilePicture} />
+                      <AvatarImage src={s.profilePicture || s.avatar || undefined} />
                       <AvatarFallback className="bg-gray-700 text-white text-sm">
-                        {suggestion.username.charAt(0).toUpperCase()}
+                        {(s.username || '?').charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <Link 
-                        href={`/profile/${suggestion.username}`}
+                      <Link
+                        href={`/u/${encodeURIComponent(s.username)}`}
                         className="font-medium text-white hover:text-gray-300 text-sm"
                       >
-                        {suggestion.username}
+                        {s.username}
                       </Link>
                       <p className="text-xs text-gray-400">
-                        {suggestion.followersCount.toLocaleString()} followers
+                        {Number(s.followersCount || 0).toLocaleString()} followers
+                        {s.mutualsCount ? ` · ${s.mutualsCount} mutual` : ''}
                       </p>
                     </div>
                   </div>
                   <Button
                     size="sm"
-                    variant={suggestion.isFollowing ? "outline" : "default"}
+                    variant={s.isFollowing ? 'outline' : 'default'}
                     className={
-                      suggestion.isFollowing 
-                        ? "border-gray-600 text-gray-300 hover:bg-gray-800" 
-                        : "bg-blue-600 hover:bg-blue-700 text-white"
+                      s.isFollowing
+                        ? 'border-gray-600 text-gray-300 hover:bg-gray-800'
+                        : 'bg-blue-600 hover:bg-blue-700 text-white'
                     }
-                    onClick={() => handleFollowToggle(suggestion.id, suggestion.isFollowing)}
+                    onClick={() => handleFollowToggle(s)}
                   >
-                    {suggestion.isFollowing ? 'Following' : 'Follow'}
+                    {s.isFollowing ? 'Following' : 'Follow'}
                   </Button>
                 </div>
               ))}
               <div className="p-4 border-t border-gray-800">
-                <Link 
-                  href="/discover/people" 
+                <Link
+                  href="/discover/people"
                   className="text-blue-400 hover:text-blue-300 text-sm"
                 >
                   See all suggestions
                 </Link>
               </div>
+            </div>
+          ) : (
+            <div className="p-4 text-sm text-gray-400">
+              No suggestions right now. Explore more creators on{' '}
+              <Link href="/discover/people" className="text-blue-400 hover:text-blue-300">
+                People
+              </Link>.
             </div>
           )}
         </CardContent>
@@ -191,30 +140,53 @@ export default function RightSidebar() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="space-y-0">
-            {trending.map((tag, index) => (
-              <Link
-                key={tag.id}
-                href={`/explore/tags/${tag.tag}`}
-                className="flex items-center justify-between p-4 hover:bg-gray-800 transition-colors"
-              >
-                <div className="flex items-center space-x-3">
-                  <div className="flex items-center justify-center w-8 h-8 bg-gray-800 rounded-lg">
-                    <Hash className="w-4 h-4 text-gray-400" />
+          {loading.trending ? (
+            <div className="space-y-3 p-4">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <Skeleton className="w-8 h-8 rounded-md bg-gray-700" />
+                    <div className="space-y-1">
+                      <Skeleton className="w-24 h-4 bg-gray-700" />
+                      <Skeleton className="w-16 h-3 bg-gray-700" />
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium text-white text-sm">#{tag.tag}</p>
-                    <p className="text-xs text-gray-400">
-                      {tag.postsCount.toLocaleString()} posts
-                    </p>
-                  </div>
+                  <Skeleton className="w-10 h-4 bg-gray-700" />
                 </div>
-                <span className="text-xs text-gray-500">#{index + 1}</span>
-              </Link>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : trending.length > 0 ? (
+            <div className="space-y-0">
+              {trending.map((tag, index) => (
+                <Link
+                  key={tag.id}
+                  href={`/explore/tags/${encodeURIComponent(tag.tag)}`}
+                  className="flex items-center justify-between p-4 hover:bg-gray-800 transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="flex items-center justify-center w-8 h-8 bg-gray-800 rounded-lg">
+                      <Hash className="w-4 h-4 text-gray-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-white text-sm">#{tag.tag}</p>
+                      <p className="text-xs text-gray-400">
+                        {Number(tag.postsCount || 0).toLocaleString()} posts
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-xs text-gray-500">#{tag.rank ?? index + 1}</span>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="p-4 text-sm text-gray-400">
+              Nothing trending yet.
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {error && <p className="text-xs text-red-400">{error}</p>}
 
       {/* Footer Links */}
       <div className="text-xs text-gray-500 space-y-2">
@@ -239,5 +211,5 @@ export default function RightSidebar() {
         <p className="text-gray-600">© 2024 Instagram Clone</p>
       </div>
     </div>
-  )
+  );
 }

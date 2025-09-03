@@ -263,7 +263,6 @@ export const useSocialStore = create((set, get) => ({
       throw new Error(msg);
     }
   },
-
   deleteStory: async (storyId) => {
     await api.delete(`/social/stories/${storyId}`);
     set(s => {
@@ -277,4 +276,294 @@ export const useSocialStore = create((set, get) => ({
     });
     return true;
   },
+  
+    discover: {
+      suggestions: [],                     // always an array
+      trending: [],                        // always an array
+      loading: { suggestions: false, trending: false },
+      error: null,
+    },
+
+  // Fetch people suggestions
+  fetchSuggestions: async (limit = 6) => {
+    set((s) => ({
+      discover: {
+        ...s.discover,
+        loading: { ...s.discover.loading, suggestions: true },
+        error: null,
+      },
+    }));
+    try {
+      const { data } = await api.get('/discover/suggestions', { params: { limit } });
+      // Normalize: accept either {items: []} or [] directly
+      const items =
+        Array.isArray(data?.items) ? data.items :
+        Array.isArray(data)        ? data :
+        [];
+      set((s) => ({
+        discover: {
+          ...s.discover,
+          suggestions: items,
+          loading: { ...s.discover.loading, suggestions: false },
+          error: null,
+        },
+      }));
+      return items;
+    } catch (e) {
+      const msg = e?.response?.data?.error || 'Failed to load suggestions';
+      set((s) => ({
+        discover: {
+          ...s.discover,
+          suggestions: [],
+          loading: { ...s.discover.loading, suggestions: false },
+          error: msg,
+        },
+      }));
+      throw e;
+    }
+  },
+
+  // Fetch trending tags
+  fetchTrending: async (limit = 10) => {
+    set((s) => ({
+      discover: {
+        ...s.discover,
+        loading: { ...s.discover.loading, trending: true },
+        error: null,
+      },
+    }));
+    try {
+      const { data } = await api.get('/discover/trending', { params: { limit } });
+      const items =
+        Array.isArray(data?.items) ? data.items :
+        Array.isArray(data)        ? data :
+        [];
+      set((s) => ({
+        discover: {
+          ...s.discover,
+          trending: items,
+          loading: { ...s.discover.loading, trending: false },
+          error: null,
+        },
+      }));
+      return items;
+    } catch (e) {
+      const msg = e?.response?.data?.error || 'Failed to load trending';
+      set((s) => ({
+        discover: {
+          ...s.discover,
+          trending: [],
+          loading: { ...s.discover.loading, trending: false },
+          error: msg,
+        },
+      }));
+      throw e;
+    }
+  },
+   discoverPaged: {
+    items: [],           // current page items (or accumulated, see below)
+    total: 0,            // total items across pages (if backend sends it)
+    page: 1,
+    limit: 24,
+    hasMore: true,
+    isLoading: false,
+    q: '',               // current query string used to fetch
+    error: null,
+  },
+
+  clearSuggestionsPaged: () =>
+    set((s) => ({
+      discoverPaged: {
+        ...s.discoverPaged,
+        items: [],
+        total: 0,
+        page: 1,
+        hasMore: true,
+        isLoading: false,
+        error: null,
+      },
+    })),
+
+  /**
+   * Fetch suggestions with pagination.
+   * Accepts either:
+   *   - { page, limit, q } for page-based pagination
+   *   - Or you can pass only { q } and it will use the current page/limit from state.
+   *
+   * Backend expected: GET /discover/suggestions?page=1&limit=24&q=foo
+   * Response can be:
+   *   { items: [...], total: 123, page: 1, limit: 24 }
+   * OR a plain array: [...]
+   */
+  fetchSuggestionsPaged: async ({ page, limit, q } = {}) => {
+    const st = get().discoverPaged;
+
+    const nextQ     = typeof q === 'string' ? q : st.q;
+    const nextPage  = Number.isFinite(page) ? page : st.page || 1;
+    const nextLimit = Number.isFinite(limit) ? limit : st.limit || 24;
+
+    // If the query changed, reset before loading
+    if (nextQ !== st.q && (nextPage === 1 || !page)) {
+      set((s) => ({
+        discoverPaged: {
+          ...s.discoverPaged,
+          items: [],
+          total: 0,
+          page: 1,
+          hasMore: true,
+          isLoading: false,
+          error: null,
+          q: nextQ,
+        },
+      }));
+    }
+
+    set((s) => ({
+      discoverPaged: {
+        ...s.discoverPaged,
+        isLoading: true,
+        error: null,
+        q: nextQ,
+      },
+    }));
+
+    try {
+      const { data } = await api.get('/discover/suggestions', {
+        params: { page: nextPage, limit: nextLimit, q: nextQ || undefined },
+      });
+
+      const payload = Array.isArray(data)
+        ? { items: data, total: undefined, page: nextPage, limit: nextLimit }
+        : {
+            items: Array.isArray(data?.items) ? data.items : [],
+            total: data?.total,
+            page: Number.isFinite(data?.page) ? data.page : nextPage,
+            limit: Number.isFinite(data?.limit) ? data.limit : nextLimit,
+          };
+
+      // If page === 1, replace; else append
+      set((s) => {
+        const prevItems = s.discoverPaged.items || [];
+        const merged =
+          payload.page > 1 ? [...prevItems, ...payload.items] : payload.items;
+
+        const totalKnown = typeof payload.total === 'number' ? payload.total : merged.length;
+        const hasMore =
+          typeof payload.total === 'number'
+            ? merged.length < payload.total
+            : payload.items.length === nextLimit; // heuristic if total not provided
+
+        return {
+          discoverPaged: {
+            ...s.discoverPaged,
+            items: merged,
+            total: totalKnown,
+            page: payload.page,
+            limit: payload.limit,
+            hasMore,
+            isLoading: false,
+            error: null,
+            q: nextQ,
+          },
+        };
+      });
+
+      return payload;
+    } catch (e) {
+      const msg = e?.response?.data?.error || 'Failed to load people';
+      set((s) => ({
+        discoverPaged: {
+          ...s.discoverPaged,
+          isLoading: false,
+          error: msg,
+        },
+      }));
+      throw e;
+    }
+  },
+  explore: {
+    items: [],
+    total: 0,
+    page: 1,
+    limit: 24,
+    sort: "trending", // 'trending' | 'recent' | 'top'
+    q: "",
+    tag: "",
+    loading: false,
+    error: null,
+    tagsTop: [],
+    tagsLoading: false,
+  },
+
+  fetchExplore: async ({ page = 1, limit = 24, sort = "trending", q = "", tag = "" } = {}) => {
+    set((s) => ({ explore: { ...s.explore, loading: true, error: null } }));
+    try {
+      const params = { page, limit, sort };
+      if (q) params.q = q;
+      if (tag) params.tag = tag;
+
+      const { data } = await api.get("/explore", { params });
+      set((s) => ({
+        explore: {
+          ...s.explore,
+          items: Array.isArray(data?.items) ? data.items : [],
+          total: data?.total || 0,
+          page: data?.page || page,
+          limit: data?.limit || limit,
+          sort,
+          q,
+          tag,
+          loading: false,
+          error: null,
+        },
+      }));
+    } catch (e) {
+      set((s) => ({ explore: { ...s.explore, loading: false, error: "Failed to load explore" } }));
+      throw e;
+    }
+  },
+
+  fetchTopTags: async (limit = 20) => {
+    set((s) => ({ explore: { ...s.explore, tagsLoading: true } }));
+    try {
+      const { data } = await api.get("/explore/tags", { params: { limit } });
+      set((s) => ({ explore: { ...s.explore, tagsTop: Array.isArray(data) ? data : [], tagsLoading: false } }));
+    } catch {
+      set((s) => ({ explore: { ...s.explore, tagsTop: [], tagsLoading: false } }));
+    }
+  },
+
+  fetchTagFeed: async ({ tag, page = 1, limit = 24 }) => {
+    if (!tag) return { items: [], total: 0, page, limit };
+    set((s) => ({ explore: { ...s.explore, loading: true, error: null } }));
+    try {
+      const { data } = await api.get(`/explore/tags/${encodeURIComponent(tag)}`, { params: { page, limit } });
+      set((s) => ({
+        explore: {
+          ...s.explore,
+          items: Array.isArray(data?.items) ? data.items : [],
+          total: data?.total || 0,
+          page: data?.page || page,
+          limit: data?.limit || limit,
+          tag: data?.tag || tag,
+          q: "",
+          loading: false,
+          error: null,
+        },
+      }));
+      return data;
+    } catch (e) {
+      set((s) => ({ explore: { ...s.explore, loading: false, error: "Failed to load tag feed" } }));
+      throw e;
+    }
+  },
+
+  searchTags: async (q) => {
+    if (!q?.trim()) return [];
+    const { data } = await api.get("/explore/tags/search", { params: { q } });
+    return Array.isArray(data) ? data : [];
+  },
 }));
+
+
+  

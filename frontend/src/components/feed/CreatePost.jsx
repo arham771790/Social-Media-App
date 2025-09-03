@@ -1,4 +1,3 @@
-// src/components/feed/CreatePost.jsx
 'use client';
 import { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -27,7 +26,7 @@ export default function CreatePost() {
   const [title, setTitle] = useState('');
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
-  const [media, setMedia] = useState(null); // { optimizedUrl, thumbnailUrl, fileType, publicId, ... }
+  const [media, setMedia] = useState(null);
   const [mediaPreview, setMediaPreview] = useState(null);
 
   if (!currentUser) return null;
@@ -45,7 +44,7 @@ export default function CreatePost() {
     } catch (err) {
       console.error(err);
     } finally {
-      e.target.value = ''; // allow re-select same file
+      e.target.value = '';
     }
   };
 
@@ -61,14 +60,12 @@ export default function CreatePost() {
       isAnonymous: false,
       mediaUrl: media?.optimizedUrl || media?.originalUrl,
       thumbnailUrl: media?.thumbnailUrl || undefined,
-      // 🔑 explicitly set post type so the FE can render reliably
       type: media ? (media.fileType === 'video' ? 'VIDEO' : 'IMAGE') : 'TEXT',
     };
 
     await createPost(payload);
     await fetchHome({ page: 1, limit: pagination.limit });
 
-    // reset form
     setContent('');
     setTitle('');
     setTags([]);
@@ -92,7 +89,7 @@ export default function CreatePost() {
   const removeTag = (t) => setTags((prev) => prev.filter((x) => x !== t));
 
   return (
-    <Card className="bg-card border-border/50 mb-6 hover:shadow-lg transition-all duration-300">
+    <Card className="bg-card border-border/50 mb-6 hover:shadow-lg transition-all duration-300 w-full max-w-2xl mx-auto sm:rounded-2xl">
       <input
         ref={fileInputRef}
         type="file"
@@ -101,22 +98,22 @@ export default function CreatePost() {
         onChange={onFileChange}
       />
 
-      <div className="p-6">
-        <div className="flex space-x-4">
-          <Avatar className="w-12 h-12 ring-2 ring-primary/20">
+      <div className="p-4 sm:p-6">
+        <div className="flex items-start gap-3 sm:gap-4">
+          <Avatar className="w-10 h-10 sm:w-12 sm:h-12 ring-2 ring-primary/20">
             <AvatarImage src={currentUser?.avatar} />
             <AvatarFallback className="bg-primary/10 text-primary font-semibold">
               {currentUser?.username?.[0]?.toUpperCase()}
             </AvatarFallback>
           </Avatar>
 
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <Textarea
               placeholder="What's on your mind?"
               value={content}
               onChange={(e) => setContent(e.target.value)}
               onFocus={() => setExpanded(true)}
-              className="min-h-[60px] resize-none border-0 p-0 text-lg placeholder:text-muted-foreground focus-visible:ring-0 bg-transparent"
+              className="min-h-[60px] resize-none border-0 p-0 text-base sm:text-lg placeholder:text-muted-foreground focus-visible:ring-0 bg-transparent"
             />
 
             <AnimatePresence>
@@ -125,22 +122,26 @@ export default function CreatePost() {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="mt-6 space-y-4"
+                  className="mt-4 sm:mt-6 space-y-4"
                 >
                   <Input
                     placeholder="Add a title (optional)"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
-                    className="text-lg font-medium border-2"
+                    className="text-base sm:text-lg font-medium border-2"
                   />
 
                   <div>
                     <div className="flex flex-wrap gap-2 mb-3">
                       {tags.map((tag) => (
-                        <Badge key={tag} variant="secondary" className="text-sm hover:scale-105 transition-transform duration-200">
+                        <Badge
+                          key={tag}
+                          variant="secondary"
+                          className="text-xs sm:text-sm hover:scale-105 transition-transform duration-200"
+                        >
                           #{tag}
-                          <button 
-                            onClick={() => removeTag(tag)} 
+                          <button
+                            onClick={() => removeTag(tag)}
                             className="ml-2 hover:text-destructive transition-colors duration-200 p-0.5 rounded-full hover:bg-destructive/10"
                           >
                             <X className="w-3 h-3" />
@@ -163,17 +164,20 @@ export default function CreatePost() {
                         <video
                           src={mediaPreview}
                           controls
-                          className="w-full max-h-80 rounded-xl shadow-lg"
+                          className="w-full max-h-64 sm:max-h-80 rounded-xl shadow-lg object-contain"
                         />
                       ) : (
                         <img
                           src={mediaPreview}
                           alt="Media preview"
-                          className="w-full max-h-80 object-cover rounded-xl shadow-lg"
+                          className="w-full max-h-64 sm:max-h-80 object-cover rounded-xl shadow-lg"
                         />
                       )}
                       <button
-                        onClick={() => { setMedia(null); setMediaPreview(null); }}
+                        onClick={() => {
+                          setMedia(null);
+                          setMediaPreview(null);
+                        }}
                         className="absolute top-3 right-3 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full hover:scale-110 transition-all duration-200 backdrop-blur-sm"
                       >
                         <X className="w-4 h-4" />
@@ -190,25 +194,44 @@ export default function CreatePost() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="flex items-center justify-between mt-6 pt-6 border-t border-border/50"
+            className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-border/50 gap-3 sm:gap-0"
           >
-            <div className="flex items-center space-x-3">
-              <Button variant="ghost" size="sm" onClick={pickFile} disabled={isUploading} className="hover:bg-primary/10 hover:text-primary transition-all duration-200">
-                <Image className="w-4 h-4 mr-2" />
+            <div className="flex items-center flex-wrap gap-2 sm:gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={pickFile}
+                disabled={isUploading}
+                className="hover:bg-primary/10 hover:text-primary transition-all duration-200"
+              >
+                <Image className="w-4 h-4 mr-1 sm:mr-2" />
                 {isUploading ? 'Uploading...' : 'Photo/Video'}
               </Button>
-              <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-all duration-200">
-                <Video className="w-4 h-4 mr-2" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hover:bg-primary/10 hover:text-primary transition-all duration-200"
+              >
+                <Video className="w-4 h-4 mr-1 sm:mr-2" />
                 Record
               </Button>
-              <Button variant="ghost" size="sm" className="hover:bg-primary/10 hover:text-primary transition-all duration-200">
-                <Smile className="w-4 h-4 mr-2" />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="hover:bg-primary/10 hover:text-primary transition-all duration-200"
+              >
+                <Smile className="w-4 h-4 mr-1 sm:mr-2" />
                 Feeling
               </Button>
             </div>
 
-            <div className="flex items-center space-x-3">
-              <Button variant="outline" size="sm" onClick={() => setExpanded(false)} className="hover:bg-muted transition-all duration-200">
+            <div className="flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setExpanded(false)}
+                className="hover:bg-muted transition-all duration-200"
+              >
                 Cancel
               </Button>
               <Button

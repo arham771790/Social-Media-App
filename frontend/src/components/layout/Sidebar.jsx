@@ -143,7 +143,7 @@ export default function Sidebar() {
               className="w-full justify-start text-gray-300 hover:text-white hover:bg-gray-800/50 p-3 rounded-xl transition-all duration-200"
             >
               <Avatar className="w-10 h-10 flex-shrink-0 ring-2 ring-purple-500/20">
-                <AvatarImage src={user?.profilePicture} alt={user?.username} />
+                <AvatarImage src={user?.avatar} alt={user?.username} />
                 <AvatarFallback className="bg-gradient-to-r from-purple-600 to-pink-600 text-white text-sm font-semibold">
                   {user?.username?.charAt(0).toUpperCase() || 'U'}
                 </AvatarFallback>
@@ -157,18 +157,7 @@ export default function Sidebar() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56 bg-gray-900/95 border-gray-700/50 backdrop-blur-sm">
-            <DropdownMenuItem asChild>
-              <Link href="/profile" className="flex items-center cursor-pointer text-white hover:bg-gray-800/50 transition-all duration-200">
-                <User className="w-4 h-4 mr-2" />
-                Profile
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link href="/settings" className="flex items-center cursor-pointer text-white hover:bg-gray-800/50 transition-all duration-200">
-                <Settings className="w-4 h-4 mr-2" />
-                Settings
-              </Link>
-            </DropdownMenuItem>
+            
             <DropdownMenuSeparator className="bg-gray-700/50" />
             <DropdownMenuItem
               onClick={handleLogout}
