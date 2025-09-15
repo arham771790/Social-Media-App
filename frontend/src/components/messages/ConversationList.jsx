@@ -1,4 +1,3 @@
-// src/components/messages/ConversationList.jsx
 "use client";
 
 import { useState } from "react";
@@ -38,31 +37,32 @@ export default function ConversationList({
   };
 
   return (
-    <div className="flex flex-col h-full bg-card w-full">
+    <div className="flex flex-col h-full bg-card w-full overflow-hidden rounded-t-xl">
       {/* Header */}
       <div className="sticky top-0 z-10 px-4 sm:px-6 py-3 sm:py-4 border-b border-border/50 flex items-center justify-between bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <h2 className="text-lg sm:text-xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
+        {/* Show heading only on desktop */}
+        <h2 className="hidden md:block text-lg sm:text-xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
           Messages
         </h2>
 
-        <div className="flex items-center gap-2">
+        {/* Desktop-only header actions */}
+        <div className="hidden md:flex items-center gap-2 shrink-0">
           <Button
             onClick={onNew}
-            className="rounded-full shadow-sm hover:shadow-md transition-all duration-200 px-3 h-9"
-            variant="gradient"
+            className="rounded-full px-3 h-9 bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:opacity-90"
           >
             <MessageSquarePlus className="h-4 w-4 sm:mr-1" />
-            <span className="hidden sm:inline">New</span>
+            <span className="hidden lg:inline">New</span>
           </Button>
 
           <Button
             onClick={() => setGroupOpen(true)}
-            className="h-9 w-9 sm:w-auto sm:px-3 rounded-full hover:bg-primary/10 hover:border-primary/50 transition-all duration-200"
+            className="h-9 rounded-full sm:px-3 hover:bg-primary/10 hover:border-primary/50"
             variant="outline"
             aria-label="New group"
           >
             <Users className="h-4 w-4 sm:mr-1" />
-            <span className="hidden md:inline">Group</span>
+            <span className="hidden lg:inline">Group</span>
           </Button>
         </div>
       </div>
@@ -70,7 +70,7 @@ export default function ConversationList({
       {/* Scrollable list */}
       <div
         className="flex-1 overflow-y-auto overscroll-contain custom-scrollbar"
-        style={{ maxHeight: "calc(100vh - 120px)" }} // ✅ ensures desktop scroll
+        style={{ maxHeight: "calc(100vh - 120px)" }}
       >
         {isLoading ? (
           <ul className="divide-y divide-border">

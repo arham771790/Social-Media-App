@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { MessageSquarePlus } from "lucide-react";
+import { MessageSquarePlus, Users, ChevronLeft } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useMessageStore } from "@/store/messageStore";
 import ConversationList from "@/components/messages/ConversationList";
@@ -10,6 +10,7 @@ import ChatHeader from "@/components/messages/ChatHeader";
 import ChatContainer from "@/components/messages/ChatContainer";
 import Composer from "@/components/messages/Composer";
 import NewMessageDialog from "@/components/messages/dialogs/NewMessageDialog";
+import NewGroupDialog from "@/components/messages/dialogs/NewGroupDialog";
 import InfoDialog from "@/components/messages/dialogs/InfoDialog";
 
 const ACTIVE_KEY = "activeChatId";
@@ -34,9 +35,11 @@ export default function MessagesPage() {
     typeof window !== "undefined" ? localStorage.getItem(ACTIVE_KEY) : null
   );
   const [newOpen, setNewOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // closed by default on mobile
+  const [groupOpen, setGroupOpen] = useState(false); // ✅ new group dialog state
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const [infoOpen, setInfoOpen] = useState(false);
 
+  // Initial data
   useEffect(() => {
     if (!token) return;
     bindSocket();
@@ -47,6 +50,7 @@ export default function MessagesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  // Load messages for active thread
   useEffect(() => {
     if (!activeId) return;
     fetchMessages(activeId).then(() => markAsRead(activeId)).catch(() => {});
@@ -55,7 +59,7 @@ export default function MessagesPage() {
     localStorage.setItem(ACTIVE_KEY, activeId);
 
     if (typeof window !== "undefined" && window.innerWidth < 768) {
-      setSidebarOpen(false); // auto-close drawer after pick on mobile
+      setSidebarOpen(false); // auto-close drawer on mobile
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
@@ -72,15 +76,13 @@ export default function MessagesPage() {
     if (!id) return;
     setActiveId(id);
     setNewOpen(false);
+    setGroupOpen(false);
   };
 
   return (
     <>
-      {/* 
-        Shell uses dvh so mobile browser chrome doesn’t hide the footer.
-        Rounded & bordered on desktop, edge-to-edge on mobile.
-      */}
-      <div className="relative h-[calc(100dvh-64px)] md:h-[calc(100dvh-64px)] max-w-6xl mx-auto border border-border/50 md:rounded-xl md:overflow-hidden min-h-0 grid md:grid-cols-[20rem_1fr] shadow-lg bg-background">
+      {/* Shell */}
+      <div className="relative h-[calc(100dvh-64px)] max-w-6xl mx-auto border border-border/50 md:rounded-xl md:overflow-hidden min-h-0 grid md:grid-cols-[20rem_1fr] shadow-lg bg-background [padding-bottom:env(safe-area-inset-bottom)]">
         {/* Sidebar (desktop) */}
         <aside className="hidden md:block bg-card/95 backdrop-blur-sm border-r border-border/50">
           <ConversationList
@@ -95,28 +97,78 @@ export default function MessagesPage() {
 
         {/* Chat pane */}
         <section className="flex flex-col min-h-0">
-          {/* Sticky header so actions are always accessible */}
-          <div className="sticky top-0 z-20">
-            <ChatHeader
-              thread={activeThread}
-              onToggleSidebar={() => setSidebarOpen((v) => !v)}
-              onBack={() => setSidebarOpen(true)}
-              showBackOnMobile
-              hasActive={!!activeId}
-              onToggleInfo={() => setInfoOpen(true)}
-            />
+          {/* Mobile list header: SHOW only when no active chat on mobile */}
+          <div className="md:hidden">
+            {!activeId && (
+              <div className="sticky top-0 z-30 border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
+                <div className="h-12 px-3 flex items-center justify-between">
+                  <button
+                    onClick={() => (window.location.href = "/feed")}
+                    className="inline-flex items-center gap-2 text-gray-200 hover:text-white"
+                    aria-label="Back to feed"
+                  >
+                    <ChevronLeft className="w-5 h-5" />
+                    <span className="text-base font-medium">Back</span>
+                  </button>
+                  <h2 className="text-lg font-semibold">Messages</h2>
+                  <div className="flex items-center gap-2">
+                    {/* New message button */}
+                    <button
+                      onClick={() => setNewOpen(true)}
+                      className="p-2 rounded-full bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:opacity-90"
+                      aria-label="New message"
+                    >
+                      <MessageSquarePlus className="w-4 h-4" />
+                    </button>
+                    {/* ✅ New group button opens NewGroupDialog */}
+                    <button
+                      onClick={() => setGroupOpen(true)}
+                      className="p-2 rounded-full border border-border/60 hover:bg-muted/30"
+                      aria-label="New group"
+                    >
+                      <Users className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {activeId ? (
+          {/* When no chat selected – show conversation list (mobile) */}
+          <div className="md:hidden flex-1 min-h-0">
+            {!activeId && (
+              <ConversationList
+                threads={threads}
+                activeId={activeId}
+                onPick={(id) => setActiveId(id)}
+                onNew={() => setNewOpen(true)}
+                totalUnread={totalUnread}
+                isLoading={loadingThreads}
+              />
+            )}
+          </div>
+
+          {/* When a chat is selected */}
+          {activeId && (
             <>
-              {/* Messages scroll area with bottom padding so Composer never overlaps */}
+              {/* Chat header (has its own Back to list) */}
+              <div className="sticky top-0 z-20">
+                <ChatHeader
+                  thread={activeThread}
+                  onToggleSidebar={() => setSidebarOpen((v) => !v)}
+                  onBack={() => setActiveId(null)} // back to list on mobile
+                  showBackOnMobile
+                  hasActive={!!activeId}
+                  onToggleInfo={() => setInfoOpen(true)}
+                />
+              </div>
+
               <ChatContainer
                 key={activeId}
                 thread={activeThread}
                 items={msgs}
                 meId={user?.id}
                 loading={isLoadingMsgs}
-                // reserve space for composer (mobile/touch)
                 bottomPaddingClass="pb-24 md:pb-28 [padding-bottom:env(safe-area-inset-bottom)]"
               />
 
@@ -125,26 +177,6 @@ export default function MessagesPage() {
                 <Composer chatGroupId={activeId} />
               </div>
             </>
-          ) : (
-            // Empty (no chat selected)
-            <div className="flex-1 grid place-items-center text-muted-foreground px-6">
-              <div className="text-center">
-                <div className="w-20 h-20 mx-auto mb-4 rounded-full bg-muted/30 flex items-center justify-center">
-                  <MessageSquarePlus className="w-10 h-10 text-muted-foreground/50" />
-                </div>
-                <h3 className="font-semibold text-lg mb-2">Select a chat</h3>
-                <p className="text-sm">
-                  Choose a conversation from the sidebar to start messaging
-                </p>
-                <button
-                  className="mt-4 inline-flex items-center gap-2 text-sm px-3 py-2 rounded-md border hover:bg-muted"
-                  onClick={() => setNewOpen(true)}
-                >
-                  <MessageSquarePlus className="w-4 h-4" />
-                  New message
-                </button>
-              </div>
-            </div>
           )}
         </section>
       </div>
@@ -180,6 +212,13 @@ export default function MessagesPage() {
       <NewMessageDialog
         open={newOpen}
         onOpenChange={setNewOpen}
+        onCreated={handleNewChatCreated}
+      />
+
+      {/* ✅ New group dialog */}
+      <NewGroupDialog
+        open={groupOpen}
+        onOpenChange={setGroupOpen}
         onCreated={handleNewChatCreated}
       />
 

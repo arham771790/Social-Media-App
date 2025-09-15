@@ -12,7 +12,7 @@ import {
   testEmail,
   testOAuth,
 } from "../controllers/authController.js";
-
+import { requestVerification,confirmVerification,registerWithVerifiedEmail } from "../controllers/verifyController.js";
 const router = Router();
 
 // Basic auth
@@ -27,6 +27,12 @@ router.post("/reset-password", resetPassword);
 // Diagnostics
 router.post("/test-email", testEmail);
 router.get("/test-oauth", testOAuth);
+
+// --- Email verification (no auth) ---;
+// public endpoints (no auth needed)
+router.post("/verify-email/request", requestVerification);
+router.post("/verify-email/confirm", confirmVerification);
+router.post("/register-verified", registerWithVerifiedEmail);
 
 // OAuth: Google
 router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));

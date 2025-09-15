@@ -1,61 +1,122 @@
-'use client'
+"use client";
 
-import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
-import { Home, Search, PlusSquare, Heart, MessageCircle, LogOut } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { useAuthStore } from '@/store/authStore'
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  Home,
+  Search,
+  PlusSquare,
+  Heart,
+  MessageCircle,
+  LogOut,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { cn } from "@/lib/utils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuthStore } from "@/store/authStore";
+import { useNotificationStore } from "@/store/notificationStore";
+
+// helper: nested path check
+const isActivePath = (pathname, href) => {
+  if (!pathname || !href) return false;
+  if (href === "/profile") return pathname.startsWith("/profile");
+  return pathname === href;
+};
 
 const navigationItems = [
-  { name: 'Home', href: '/feed', icon: Home },
-  { name: 'Search', href: '/search', icon: Search },
-  { name: 'Create', href: '/create', icon: PlusSquare },
-  { name: 'Messages', href: '/messages', icon: MessageCircle },
-  { name: 'Notifications', href: '/notifications', icon: Heart },
-]
+  { name: "Home", href: "/feed", icon: Home, aria: "Go to home" },
+  { name: "Search", href: "/search", icon: Search, aria: "Search" },
+  { name: "Create", href: "/create", icon: PlusSquare, aria: "Create post" },
+  { name: "Messages", href: "/messages", icon: MessageCircle, aria: "Messages" },
+  { name: "Notifications", href: "/notifications", icon: Heart, aria: "Notifications" },
+];
 
 export default function MobileNavbar() {
-  const pathname = usePathname()
-  const router = useRouter()
-  const { user, logout } = useAuthStore()
+  const pathname = usePathname();
+  const router = useRouter();
+  const { user, logout } = useAuthStore();
+
+  // ✅ use separate selectors to avoid new object snapshots
+  const notifUnread = useNotificationStore((s) => s.unreadCount) ?? 0;
+  const msgUnread   = useNotificationStore((s) => s.msgUnread) ?? 0; // adjust to your store
+  const bindSocket  = useNotificationStore((s) => s.bindSocket);
+  const fetchNotifications = useNotificationStore((s) => s.fetchNotifications);
+
+  // mount-safe (avoid hydration mismatch)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+    fetchNotifications?.({ page: 1, limit: 20 }).catch(() => {});
+    bindSocket?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleLogout = async () => {
-    await logout()
-    router.push('/login')
-  }
+    await logout();
+    router.push("/login");
+  };
+
+  const safeUserInitial = useMemo(
+    () => (user?.username ? user.username[0].toUpperCase() : "U"),
+    [user?.username]
+  );
+
+  if (!mounted) return null;
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 bg-black border-t border-gray-800 z-50">
+    <nav
+      className="fixed bottom-0 inset-x-0 z-50 border-t border-gray-800/80 bg-black/95 backdrop-blur supports-[backdrop-filter]:bg-black/75 [padding-bottom:env(safe-area-inset-bottom)]"
+      role="navigation"
+      aria-label="Mobile primary"
+    >
       <div className="flex items-center justify-around py-2">
         {navigationItems.map((item) => {
-          const isActive = pathname === item.href
+          const Icon = item.icon;
+          const active = isActivePath(pathname, item.href);
+
+          // badges (messages / notifications)
+          const showNotifBadge = item.name === "Notifications" && notifUnread > 0;
+          const showMsgBadge = item.name === "Messages" && msgUnread > 0;
+
           return (
             <Link
               key={item.name}
               href={item.href}
+              aria-label={item.aria}
               className={cn(
-                "flex flex-col items-center py-2 px-3 rounded-lg transition-colors",
-                isActive ? "text-white" : "text-gray-400 hover:text-gray-200"
+                "relative flex flex-col items-center py-2 px-3 rounded-lg transition-colors select-none",
+                active ? "text-white" : "text-gray-400 hover:text-gray-200"
               )}
             >
-              <item.icon className={cn("w-6 h-6", isActive && "fill-current")} />
+              <span className="relative inline-flex">
+                <Icon className={cn("w-6 h-6", active && "fill-current")} />
+                {(showNotifBadge || showMsgBadge) && (
+                  <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-to-r from-red-500 to-pink-500 text-[10px] leading-[18px] text-white font-semibold text-center shadow-md">
+                    {(showNotifBadge ? notifUnread : msgUnread) > 99
+                      ? "99+"
+                      : (showNotifBadge ? notifUnread : msgUnread)}
+                  </span>
+                )}
+              </span>
             </Link>
-          )
+          );
         })}
 
         {/* Profile */}
         <Link
           href="/profile"
+          aria-label="Profile"
           className={cn(
-            "flex flex-col items-center py-2 px-3 rounded-lg transition-colors",
-            pathname.startsWith('/profile') ? "text-white" : "text-gray-400 hover:text-gray-200"
+            "flex flex-col items-center py-2 px-3 rounded-lg transition-colors select-none",
+            pathname?.startsWith("/profile")
+              ? "text-white"
+              : "text-gray-400 hover:text-gray-200"
           )}
         >
-          <Avatar className="w-6 h-6">
-            <AvatarImage src={user?.profilePicture} alt={user?.username} />
-            <AvatarFallback className="bg-gray-600 text-white text-xs">
-              {user?.username?.charAt(0).toUpperCase() || 'U'}
+          <Avatar className="w-6 h-6 ring-1 ring-gray-700/60">
+            <AvatarImage src={user?.profilePicture || user?.avatar || undefined} alt={user?.username || "user"} />
+            <AvatarFallback className="bg-gray-600 text-white text-[10px]">
+              {safeUserInitial}
             </AvatarFallback>
           </Avatar>
         </Link>
@@ -63,11 +124,12 @@ export default function MobileNavbar() {
         {/* Logout */}
         <button
           onClick={handleLogout}
+          aria-label="Log out"
           className="flex flex-col items-center py-2 px-3 text-gray-400 hover:text-red-400 transition-colors"
         >
           <LogOut className="w-6 h-6" />
         </button>
       </div>
     </nav>
-  )
+  );
 }

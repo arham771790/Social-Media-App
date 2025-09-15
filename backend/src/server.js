@@ -141,10 +141,28 @@ io.on("connection", (socket) => {
   });
 
   // ---- WebRTC signaling (room-scoped) ----
-  socket.on("call:offer",     ({ roomId, sdp, fromUser }) => { if (roomId) socket.to(String(roomId)).emit("call:offer",     { sdp, fromUser }); });
-  socket.on("call:answer",    ({ roomId, sdp, fromUser }) => { if (roomId) socket.to(String(roomId)).emit("call:answer",    { sdp, fromUser }); });
-  socket.on("call:candidate", ({ roomId, candidate, fromUser }) => { if (roomId) socket.to(String(roomId)).emit("call:candidate", { candidate, fromUser }); });
-  socket.on("call:end",       ({ roomId, reason }) => { if (roomId) io.to(String(roomId)).emit("call:end", { reason }); });
+  io.on("connection", (socket) => {
+  socket.on("room:join", ({ roomId }) => socket.join(roomId));
+  socket.on("room:leave", ({ roomId }) => socket.leave(roomId));
+
+  socket.on("call:ring", ({ roomId, fromUser, mode }) => {
+    // notify others in the room
+    socket.to(roomId).emit("call:ring", { roomId, fromUser, mode });
+  });
+
+  socket.on("call:offer", ({ roomId, sdp, fromUser }) => {
+    socket.to(roomId).emit("call:offer", { sdp, fromUser });
+  });
+  socket.on("call:answer", ({ roomId, sdp, fromUser }) => {
+    socket.to(roomId).emit("call:answer", { sdp, fromUser });
+  });
+  socket.on("call:candidate", ({ roomId, candidate, fromUser }) => {
+    socket.to(roomId).emit("call:candidate", { candidate, fromUser });
+  });
+  socket.on("call:end", ({ roomId, reason }) => {
+    io.to(roomId).emit("call:end", { reason });
+  });
+});
 
   // ---- Typing UX (ACCEPT chatGroupId or roomId; FORWARD username) ----
   socket.on("typing:start", ({ roomId, chatGroupId, userId: uid, username }) => {

@@ -85,6 +85,7 @@ async sendWelcome(email, username) {
         });
       }
 
+
       const result = await this.transporter.sendMail(mailOptions);
       
       if (process.env.DEBUG_EMAIL) {
@@ -97,6 +98,47 @@ async sendWelcome(email, username) {
       return { success: false, error: error.message };
     }
   }
+  async sendEmailVerificationCode(email, code, ttlMin = 10) {
+  try {
+    if (!process.env.BREVO_USER || !process.env.BREVO_PASSWORD) {
+      console.error('Email configuration missing. Set BREVO_USER and BREVO_PASSWORD in .env');
+      return { success: false, error: 'Email configuration not set up' };
+    }
+
+    const mailOptions = {
+      from: process.env.BREVO_FROM_EMAIL || 'noreply@yourdomain.com',
+      to: email,
+      subject: 'Verify your email',
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color:#111;margin:0 0 8px;">Confirm your email</h2>
+          <p>Use this code to verify your email address:</p>
+          <div style="background:#f5f5f5;padding:18px;text-align:center;margin:16px 0;border-radius:8px;border:1px solid #eee;">
+            <div style="font-size:32px;letter-spacing:6px;font-weight:700;color:#0d6efd;">${code}</div>
+          </div>
+          <p>This code expires in <strong>${ttlMin} minutes</strong>.</p>
+          <p style="color:#666;font-size:12px;margin-top:24px;">If you didn’t request this, you can ignore this email.</p>
+        </div>
+      `,
+    };
+
+    if (process.env.DEBUG_EMAIL) {
+      console.log('Sending verification email:', {
+        to: mailOptions.to,
+        subject: mailOptions.subject,
+        host: process.env.BREVO_HOST,
+        port: process.env.BREVO_PORT,
+      });
+    }
+
+    const result = await this.transporter.sendMail(mailOptions);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('Verification email sending failed:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 
   async sendPasswordResetSuccess(email) {
     try {

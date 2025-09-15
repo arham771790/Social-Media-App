@@ -68,6 +68,18 @@ model User {
 
   createdAt DateTime @default(now()) // Account creation date
 }
+// ---------- EMAIL VERIFICATION ----------
+model EmailVerification {
+  id         String   @id @default(cuid())
+  email      String   @db.VarChar(320)
+  codeHash   String   // sha256(code + secret)
+  expiresAt  DateTime
+  consumed   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([email, expiresAt, consumed])
+}
+
 
 //
 // ---------- CHAT TYPES ENUM ----------

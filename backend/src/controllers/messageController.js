@@ -381,34 +381,58 @@ export const sendMessage = async (req, res) => {
   try {
     const { chatGroupId } = req.params;
     const userId = req.userId;
-    const { content, mediaUrl, clientTempId, mimeType, fileType } = req.body || {};
+    const {
+      content,
+      mediaUrl,
+      clientTempId,
+      mimeType,
+      fileType,
+      type: rawType,     // NEW
+      isSystem: rawSys,  // NEW
+    } = req.body || {};
 
-    if (!content && !mediaUrl) {
+    const isMember = await ensureMembership(chatGroupId, userId);
+    if (!isMember) {
+      return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied to this chat" });
+    }
+
+    // --- Type & validation ---
+    const ALLOWED = ["TEXT", "IMAGE", "VIDEO", "FILE", "CALL_INVITE"];
+    let type = (rawType || "").toString().toUpperCase().trim();
+
+    if (!type) {
+      // infer (your previous logic)
+      if (!content && !mediaUrl) {
+        return res.status(StatusCodes.BAD_REQUEST).json({ error: "Message content or media is required" });
+      }
+      if (mediaUrl) {
+        if (fileType)       type = fileType.toUpperCase();
+        else if (mimeType?.startsWith("image/")) type = "IMAGE";
+        else if (mimeType?.startsWith("video/")) type = "VIDEO";
+        else                    type = "FILE";
+      } else {
+        type = "TEXT";
+      }
+    }
+
+    if (!ALLOWED.includes(type)) {
+      return res.status(StatusCodes.BAD_REQUEST).json({ error: "Invalid message type" });
+    }
+
+    // CALL_INVITE is a system-ish message; allow without content/media
+    if (type !== "CALL_INVITE" && !content && !mediaUrl) {
       return res.status(StatusCodes.BAD_REQUEST).json({ error: "Message content or media is required" });
     }
 
-    const isMember = await ensureMembership(chatGroupId, userId);
-    if (!isMember) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied to this chat" });
+    const isSystem = Boolean(rawSys) || type === "CALL_INVITE";
 
-   let type = "TEXT";
-if (mediaUrl) {
-  if (fileType) {
-    type = fileType.toUpperCase(); // "IMAGE" | "VIDEO" | "FILE"
-  } else if (mimeType?.startsWith("image/")) {
-    type = "IMAGE";
-  } else if (mimeType?.startsWith("video/")) {
-    type = "VIDEO";
-  } else {
-    type = "FILE";
-  }
-}
-
-    // Create message, then bump thread & lastMessageId
+    // --- Create message ---
     const message = await prisma.message.create({
       data: {
         content:  content || null,
         mediaUrl: mediaUrl || null,
         type,
+        isSystem, // NEW: mark system call logs as system messages
         sender:    { connect: { id: userId } },
         chatGroup: { connect: { id: chatGroupId } },
         readBy:    { connect: { id: userId } }, // sender auto-reads
@@ -427,29 +451,31 @@ if (mediaUrl) {
     // socket broadcast (room == chatGroupId)
     io.to(chatGroupId).emit("message:new", { chatGroupId, message, clientTempId });
 
-    // in-app notifications for other members
-    const group = await prisma.chatGroup.findUnique({
-      where: { id: chatGroupId },
-      select: { members: { select: { id: true } }, admins: { select: { id: true } } },
-    });
-    const recipientIds = [
-      ...(group?.members || []).map((m) => m.id),
-      ...(group?.admins  || []).map((a) => a.id),
-    ]
-      .filter((id) => id !== userId)
-      .filter((v, i, a) => a.indexOf(v) === i);
+    // notifications for normal messages only (skip system call logs)
+    if (!isSystem) {
+      const group = await prisma.chatGroup.findUnique({
+        where: { id: chatGroupId },
+        select: { members: { select: { id: true } }, admins: { select: { id: true } } },
+      });
+      const recipientIds = [
+        ...(group?.members || []).map((m) => m.id),
+        ...(group?.admins  || []).map((a) => a.id),
+      ]
+        .filter((id) => id !== userId)
+        .filter((v, i, a) => a.indexOf(v) === i);
 
-    await Promise.all(
-      recipientIds.map((rid) =>
-        createAndEmitNotification({
-          recipientId: rid,
-          type: "MESSAGE",
-          message: `New message`,
-          relatedUserId: userId,
-          relatedPostId: null,
-        })
-      )
-    );
+      await Promise.all(
+        recipientIds.map((rid) =>
+          createAndEmitNotification({
+            recipientId: rid,
+            type: "MESSAGE",
+            message: `New message`,
+            relatedUserId: userId,
+            relatedPostId: null,
+          })
+        )
+      );
+    }
 
     return res.status(StatusCodes.CREATED).json({ ...message, clientTempId });
   } catch (err) {
@@ -457,6 +483,7 @@ if (mediaUrl) {
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to send message" });
   }
 };
+
 
 export const markMessagesAsRead = async (req, res) => {
   try {

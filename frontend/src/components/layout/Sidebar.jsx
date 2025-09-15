@@ -1,8 +1,8 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Home,
   Search,
@@ -14,30 +14,38 @@ import {
   LogOut,
   Menu,
   Compass,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { cn } from '@/lib/utils';
-import { useAuthStore } from '@/store/authStore';
-import { useToast } from '@/hooks/use-toast';
-import { useNotificationStore } from '@/store/notificationStore';
+} from "@/components/ui/dropdown-menu";
+import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/authStore";
+import { useToast } from "@/hooks/use-toast";
+import { useNotificationStore } from "@/store/notificationStore";
 
 const navigationItems = [
-  { name: 'Home', href: '/feed', icon: Home },
-  { name: 'Search', href: '/search', icon: Search },
-  { name: 'Messages', href: '/messages', icon: MessageCircle },
-  { name: 'Notifications', href: '/notifications', icon: Heart },
-  { name: 'Explore', href: '/explore', icon: Compass },
-  { name: 'Create', href: '/create', icon: PlusSquare },
-  { name: 'Profile', href: '/profile', icon: User },
+  { name: "Home", href: "/feed", icon: Home },
+  { name: "Search", href: "/search", icon: Search },
+  { name: "Messages", href: "/messages", icon: MessageCircle },
+  { name: "Notifications", href: "/notifications", icon: Heart },
+  { name: "Explore", href: "/explore", icon: Compass },
+  { name: "Create", href: "/create", icon: PlusSquare },
+  { name: "Profile", href: "/profile", icon: User },
 ];
+
+const COLLAPSE_KEY = "sidebarCollapsed:v1";
+
+const isActivePath = (pathname, href) => {
+  if (!pathname || !href) return false;
+  if (href === "/profile") return pathname.startsWith("/profile");
+  return pathname === href;
+};
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -45,27 +53,49 @@ export default function Sidebar() {
   const { toast } = useToast();
   const { user, logout } = useAuthStore();
 
-  // 🔔 notifications store
-  const { unreadCount, fetchNotifications, bindSocket } = useNotificationStore();
+  // ✅ separate selectors to avoid new object snapshots
+  const unreadCount = useNotificationStore((s) => s.unreadCount) ?? 0;
+  const msgUnread   = useNotificationStore((s) => s.msgUnread) ?? 0;
+  const fetchNotifications = useNotificationStore((s) => s.fetchNotifications);
+  const bindSocket  = useNotificationStore((s) => s.bindSocket);
 
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    // initial pull + live updates
-    fetchNotifications({ page: 1, limit: 20 }).catch(() => {});
-    bindSocket();
+    setMounted(true);
+    try {
+      const saved = localStorage.getItem(COLLAPSE_KEY);
+      if (saved != null) setIsCollapsed(saved === "1");
+    } catch {}
+    fetchNotifications?.({ page: 1, limit: 20 }).catch(() => {});
+    bindSocket?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!mounted) return;
+    try {
+      localStorage.setItem(COLLAPSE_KEY, isCollapsed ? "1" : "0");
+    } catch {}
+  }, [isCollapsed, mounted]);
+
   const handleLogout = async () => {
     await logout();
-    toast({ title: 'Logged out', description: 'You have been successfully logged out.' });
-    router.push('/login');
+    toast({ title: "Logged out", description: "You have been successfully logged out." });
+    router.push("/login");
   };
 
+  const safeUserInitial = useMemo(
+    () => (user?.username ? user.username[0].toUpperCase() : "U"),
+    [user?.username]
+  );
+
+  if (!mounted) return null;
+
   return (
-     <div className="hidden lg:flex flex-col h-full w-64 bg-gradient-to-b from-gray-900 to-black border-r border-gray-800/50 backdrop-blur-sm">
-    {/* Header */}
+    <div className="hidden lg:flex flex-col h-full w-64 bg-gradient-to-b from-gray-900 to-black border-r border-gray-800/50 backdrop-blur-sm">
+      {/* Header */}
       <div className="p-6">
         <div className="flex items-center justify-between">
           <Link href="/feed" className="flex items-center space-x-2 group">
@@ -83,8 +113,9 @@ export default function Sidebar() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setIsCollapsed(!isCollapsed)}
+            onClick={() => setIsCollapsed((v) => !v)}
             className="text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg transition-all duration-200"
+            aria-label="Toggle sidebar"
           >
             <Menu className="w-5 h-5" />
           </Button>
@@ -95,31 +126,34 @@ export default function Sidebar() {
       <nav className="flex-1 px-3">
         <ul className="space-y-2">
           {navigationItems.map((item) => {
-            const isActive =
-              pathname === item.href ||
-              (item.href === '/profile' && pathname.startsWith('/profile'));
-
+            const active = isActivePath(pathname, item.href);
             const Icon = item.icon;
+
+            const showNotif = item.name === "Notifications" && unreadCount > 0;
+            const showMsg = item.name === "Messages" && msgUnread > 0;
 
             return (
               <li key={item.name}>
                 <Link
                   href={item.href}
                   className={cn(
-                    'flex items-center px-3 py-3 rounded-xl text-gray-300 hover:text-white hover:bg-gray-800/50 transition-all duration-200 group',
-                    isActive && 'text-white bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 shadow-lg shadow-purple-500/10'
+                    "flex items-center px-3 py-3 rounded-xl text-gray-300 hover:text-white hover:bg-gray-800/50 transition-all duration-200 group",
+                    active &&
+                      "text-white bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 shadow-lg shadow-purple-500/10"
                   )}
                 >
-                  {/* Icon + badge wrapper */}
                   <span className="relative inline-flex">
-                    <Icon className={cn(
-                      "w-6 h-6 flex-shrink-0 transition-all duration-200",
-                      isActive ? "text-purple-400" : "group-hover:text-purple-300"
-                    )} />
-                    {/* 🔴 Unread badge only on Notifications */}
-                    {item.name === 'Notifications' && unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-to-r from-red-500 to-pink-500 text-[10px] leading-[18px] text-white font-semibold text-center shadow-lg animate-pulse">
-                        {unreadCount > 99 ? '99+' : unreadCount}
+                    <Icon
+                      className={cn(
+                        "w-6 h-6 flex-shrink-0 transition-all duration-200",
+                        active ? "text-purple-400" : "group-hover:text-purple-300"
+                      )}
+                    />
+                    {(showNotif || showMsg) && (
+                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-to-r from-red-500 to-pink-500 text-[10px] leading-[18px] text-white font-semibold text-center shadow-lg">
+                        {(showNotif ? unreadCount : msgUnread) > 99
+                          ? "99+"
+                          : (showNotif ? unreadCount : msgUnread)}
                       </span>
                     )}
                   </span>
@@ -145,7 +179,7 @@ export default function Sidebar() {
               <Avatar className="w-10 h-10 flex-shrink-0 ring-2 ring-purple-500/20">
                 <AvatarImage src={user?.avatar} alt={user?.username} />
                 <AvatarFallback className="bg-gradient-to-r from-purple-600 to-pink-600 text-white text-sm font-semibold">
-                  {user?.username?.charAt(0).toUpperCase() || 'U'}
+                  {safeUserInitial}
                 </AvatarFallback>
               </Avatar>
               {!isCollapsed && (
@@ -156,8 +190,17 @@ export default function Sidebar() {
               )}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56 bg-gray-900/95 border-gray-700/50 backdrop-blur-sm">
-            
+          <DropdownMenuContent
+            align="start"
+            className="w-56 bg-gray-900/95 border-gray-700/50 backdrop-blur-sm"
+          >
+            <DropdownMenuItem
+              onClick={() => router.push("/settings")}
+              className="flex items-center cursor-pointer"
+            >
+              <Settings className="w-4 h-4 mr-2" />
+              Settings
+            </DropdownMenuItem>
             <DropdownMenuSeparator className="bg-gray-700/50" />
             <DropdownMenuItem
               onClick={handleLogout}

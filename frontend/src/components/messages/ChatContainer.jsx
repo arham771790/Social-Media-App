@@ -3,19 +3,20 @@
 
 import { useEffect, useRef } from "react";
 import MessageList from "./MessageList";
-import { Skeleton } from "@/components/ui/skeleton";
 
 export default function ChatContainer({
   thread,
   items = [],
   meId,
   loading = false,
-  bottomPaddingClass = "pb-24 md:pb-28",
+  showSpinnerOverlay = false,
+  // We no longer rely on bottom padding tricks for scroll containment.
+  className = "",
 }) {
   const bottomRef = useRef(null);
-  const scrollRef = useRef(null);
+  const scrollAreaRef = useRef(null);
 
-  // Scroll to bottom on mount and when new messages arrive
+  // Always scroll to bottom when thread changes or new items arrive
   useEffect(() => {
     if (!bottomRef.current) return;
     bottomRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -23,39 +24,57 @@ export default function ChatContainer({
 
   if (!thread) {
     return (
-      <div className="flex-1 overflow-y-auto p-4 bg-background text-muted-foreground">
+      <div className="flex-1 min-h-0 flex items-center justify-center text-muted-foreground">
         No conversation selected
       </div>
     );
   }
 
   return (
-    <div
-      ref={scrollRef}
-      className={`flex-1 overflow-y-auto bg-background px-3 sm:px-4 ${bottomPaddingClass}`}
-    >
-      {/* Loading state (messages skeletons) */}
-      {loading && !items?.length ? (
-        <div className="py-4 space-y-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="flex items-start gap-3">
-              <Skeleton className="h-8 w-8 rounded-full" />
-              <div className="flex-1 space-y-2">
-                <Skeleton className="h-4 w-1/3" />
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-4 w-2/3" />
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="py-3">
-          <MessageList messages={items} meId={meId} />
-          {/* Spacer ensures last bubble never hides behind composer */}
-          <div className="h-2" />
-          <div ref={bottomRef} />
+    <div className={`relative flex flex-col min-h-0 h-full ${className}`}>
+      {/* Scroll area */}
+      <div
+        ref={scrollAreaRef}
+        className="flex-1 min-h-0 overflow-y-auto bg-background px-3 sm:px-4 py-3"
+      >
+        {loading && !items?.length ? (
+          <BubbleSkeleton />
+        ) : (
+          <>
+            <MessageList messages={items} meId={meId} />
+            {/* tiny spacer + anchor so the last bubble never hides behind the composer */}
+            <div className="h-2" />
+            <div ref={bottomRef} />
+          </>
+        )}
+      </div>
+
+      {/* Optional overlay spinner when loading additional messages */}
+      {showSpinnerOverlay && loading && items?.length > 0 && (
+        <div className="absolute inset-0 grid place-items-center pointer-events-none">
+          <div className="h-6 w-6 rounded-full border-2 border-muted-foreground/30 border-t-foreground animate-spin" />
         </div>
       )}
+    </div>
+  );
+}
+
+function BubbleSkeleton() {
+  return (
+    <div className="space-y-4">
+      {Array.from({ length: 10 }).map((_, i) => {
+        const right = i % 2 === 0;
+        return (
+          <div key={i} className={`flex ${right ? "justify-end" : "justify-start"}`}>
+            <div
+              className={`max-w-[78%] rounded-2xl px-4 py-3 ${
+                right ? "rounded-tr-md" : "rounded-tl-md"
+              } bg-muted`}
+              style={{ minHeight: 20 + (i % 3) * 10 }}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }

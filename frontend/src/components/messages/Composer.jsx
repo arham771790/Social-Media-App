@@ -6,8 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useMessageStore } from "@/store/messageStore";
 import { useUploadStore } from "@/store/uploadStore";
+import { useAuthStore } from "@/store/authStore";
+import { useToast } from "@/hooks/use-toast";
+
+import {
+  upsertThreadLastMessage,
+  setThreadUnread,
+} from "@/lib/threadsCache";
 
 export default function Composer({ chatGroupId, className = "" }) {
+  const { toast } = useToast();
+  const me = useAuthStore((s) => s.user);
+
   const sendMessage = useMessageStore((s) => s.sendMessage);
   const startTyping = useMessageStore((s) => s.startTyping);
   const stopTyping = useMessageStore((s) => s.stopTyping);
@@ -37,19 +47,65 @@ export default function Composer({ chatGroupId, className = "" }) {
     if (!f) return;
     setFile(f);
     setPreview(URL.createObjectURL(f));
+    toast({ title: "Attachment ready", description: f.name, duration: 1200 });
+  };
+
+  const optimisticBump = (payload) => {
+    // Normalize to the lastMessage shape used in list
+    const type = payload.fileType
+      ? (payload.fileType?.toUpperCase().startsWith("VIDEO") ? "VIDEO" :
+         payload.fileType?.toUpperCase().startsWith("IMAGE") ? "IMAGE" :
+         "FILE")
+      : "TEXT";
+
+    const content =
+      payload.content ??
+      (type === "IMAGE" ? "📷 Photo" :
+       type === "VIDEO" ? "🎥 Video" :
+       type === "FILE"  ? "📎 File"  : "");
+
+    const message = {
+      content,
+      type,
+      timestamp: Date.now(),
+      sender: me ? { id: me.id, username: me.username } : null,
+    };
+
+    // Reorder to top, reset unread for current user
+    upsertThreadLastMessage(chatGroupId, message, { moveToTop: true, resetUnread: true });
+    setThreadUnread(chatGroupId, 0);
   };
 
   const submit = async (e) => {
     e.preventDefault();
-    if (busy) return;
+    if (busy || !chatGroupId) return;
 
     try {
       setBusy(true);
+
+      // Optimistically update the list BEFORE hitting the network
+      if (file) {
+        optimisticBump({
+          fileType: file.type,
+          content: null,
+        });
+      } else if (text.trim()) {
+        optimisticBump({
+          content: text.trim(),
+          fileType: null,
+        });
+      }
+
+      // Upload/send
       if (file) {
         const uploaded = await uploadFile(file);
         const mediaUrl = uploaded?.optimizedUrl || uploaded?.originalUrl;
         if (mediaUrl) {
-          await sendMessage(chatGroupId, { mediaUrl });
+          await sendMessage(chatGroupId, {
+            mediaUrl,
+            mimeType: file.type,
+            fileType: file.type.startsWith("video") ? "video" : "image",
+          });
         }
         setFile(null);
         setPreview("");
@@ -59,6 +115,14 @@ export default function Composer({ chatGroupId, className = "" }) {
         await sendMessage(chatGroupId, { content: val });
         setText("");
       }
+
+      toast({ title: "Sent", duration: 900 });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Failed to send",
+        description: err?.response?.data?.error || "Please try again.",
+      });
     } finally {
       setBusy(false);
       sendTyping(false);
@@ -91,7 +155,7 @@ export default function Composer({ chatGroupId, className = "" }) {
       )}
 
       <label className="cursor-pointer p-2 rounded hover:bg-muted shrink-0">
-        <Paperclip className="w-4 h-4" />
+        <Paperclip className="w-5 h-5" />
         <input type="file" className="hidden" onChange={handleFile} accept="image/*,video/*" />
       </label>
 
@@ -105,11 +169,17 @@ export default function Composer({ chatGroupId, className = "" }) {
         className="flex-1 text-sm"
         onFocus={() => sendTyping(true)}
         onBlur={() => sendTyping(false)}
-        disabled={busy}
+        disabled={busy || !chatGroupId}
       />
 
-      <Button type="submit" className="shrink-0" disabled={busy || (!text.trim() && !file)}>
-        <Send className="w-4 h-4 mr-1" />
+      <Button
+        type="submit"
+        className="shrink-0"
+        disabled={busy || (!text.trim() && !file) || !chatGroupId}
+        aria-label="Send message"
+      >
+        <Send className="w-4 h-4 mr-1 hidden sm:inline" />
+        <Send className="w-5 h-5 sm:hidden" />
         <span className="hidden sm:inline">{busy ? "Sending…" : "Send"}</span>
       </Button>
     </form>

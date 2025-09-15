@@ -1,4 +1,3 @@
-// src/components/messages/dialogs/NewMessageDialog.jsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -18,8 +17,9 @@ import UserSearchResults from "./UserSearchResults";
 import GroupCreationForm from "./GroupCreationForm";
 import { useMessageStore } from "@/store/messageStore";
 import { useAuthStore } from "@/store/authStore";
+import { useToast } from "@/hooks/use-toast";
 
-// debounce
+/** debounce */
 const useDebounced = (v, d = 300) => {
   const [val, setVal] = useState(v);
   useEffect(() => {
@@ -31,6 +31,7 @@ const useDebounced = (v, d = 300) => {
 
 export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
   const router = useRouter();
+  const { toast } = useToast();
   const me = useAuthStore((s) => s.user);
   const fetchThreads = useMessageStore((s) => s.fetchThreads);
   const searchUsers = useMessageStore((s) => s.searchUsers);
@@ -62,7 +63,11 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
 
     searchUsers("")
       .then((arr) => setUsers(arr.filter((u) => u.id !== me?.id)))
-      .catch((e) => setError(e?.response?.data?.error || "Failed to load users"))
+      .catch((e) => {
+        const msg = e?.response?.data?.error || "Failed to load users";
+        setError(msg);
+        toast({ variant: "destructive", title: "Error", description: msg });
+      })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -72,7 +77,11 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
     setLoading(true);
     searchUsers(debounced)
       .then((arr) => setUsers(arr.filter((u) => u.id !== me?.id)))
-      .catch((e) => setError(e?.response?.data?.error || "Failed to search users"))
+      .catch((e) => {
+        const msg = e?.response?.data?.error || "Failed to search users";
+        setError(msg);
+        toast({ variant: "destructive", title: "Search failed", description: msg });
+      })
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debounced]);
@@ -86,10 +95,13 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
       const chatId = data?.chatGroup?.id;
       await fetchThreads();
       onOpenChange?.(false);
+      toast({ title: "Chat created" });
       if (typeof onCreated === "function" && chatId) onCreated(chatId);
       else if (chatId) router.push("/messages");
     } catch (e) {
-      setError(e?.response?.data?.error || "Failed to start chat");
+      const msg = e?.response?.data?.error || "Failed to start chat";
+      setError(msg);
+      toast({ variant: "destructive", title: "Error", description: msg });
     } finally {
       setBusyId(null);
     }
@@ -108,10 +120,13 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
       const chatId = data?.chatGroup?.id;
       await fetchThreads();
       onOpenChange?.(false);
+      toast({ title: "Group created" });
       if (typeof onCreated === "function" && chatId) onCreated(chatId);
       else if (chatId) router.push("/messages");
     } catch (e) {
-      setError(e?.response?.data?.error || "Failed to create group");
+      const msg = e?.response?.data?.error || "Failed to create group";
+      setError(msg);
+      toast({ variant: "destructive", title: "Error", description: msg });
     } finally {
       setBusy(false);
     }
@@ -150,14 +165,17 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md !bg-white border-border/50 shadow-2xl">
-        <DialogHeader className="p-6 pb-4">
+      {/* Mobile: fullscreen; Desktop: normal card */}
+      <DialogContent className="h-[100svh] sm:h-auto w-full sm:max-w-md !bg-white border-border/50 shadow-2xl p-0 overflow-hidden">
+        <DialogHeader className="px-6 pt-6 pb-3">
           <DialogTitle className="flex items-center gap-2 text-xl font-semibold">
             <MessageSquarePlus className="w-5 h-5 text-primary" />
             New Message
           </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            {groupMode ? "Select members and name your group." : "Find someone to message directly."}
+            {groupMode
+              ? "Select members and name your group."
+              : "Find someone to message directly."}
           </DialogDescription>
         </DialogHeader>
 
@@ -186,7 +204,7 @@ export default function NewMessageDialog({ open, onOpenChange, onCreated }) {
         </div>
 
         <div className="px-6 pb-6">
-          <div className="h-72 mt-2 overflow-y-auto rounded-lg border-2 border-border/50 bg-muted/20">
+          <div className="h-[60svh] sm:h-72 mt-2 overflow-y-auto rounded-lg border-2 border-border/50 bg-muted/20">
             <UserSearchResults
               users={users}
               loading={loading}

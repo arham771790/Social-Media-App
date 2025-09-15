@@ -1,14 +1,44 @@
-'use client';
-import { useEffect } from 'react';
-import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { TrendingUp, Users, Hash } from 'lucide-react';
-import { useSocialStore } from '@/store/socialStore';
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TrendingUp, Users, Hash } from "lucide-react";
+import { useSocialStore } from "@/store/socialStore";
+import { useToast } from "@/hooks/use-toast";
+
+/* ---------- Simple local cache with TTL ---------- */
+const RS_CACHE_KEY = "rightSidebarCache:v1";
+const RS_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+function loadCache() {
+  try {
+    const raw = localStorage.getItem(RS_CACHE_KEY);
+    if (!raw) return null;
+    const { ts, suggestions, trending } = JSON.parse(raw);
+    if (Date.now() - ts > RS_TTL_MS) return null;
+    return {
+      suggestions: Array.isArray(suggestions) ? suggestions : [],
+      trending: Array.isArray(trending) ? trending : [],
+    };
+  } catch {
+    return null;
+  }
+}
+function saveCache(suggestions, trending) {
+  try {
+    localStorage.setItem(
+      RS_CACHE_KEY,
+      JSON.stringify({ ts: Date.now(), suggestions, trending })
+    );
+  } catch {}
+}
 
 export default function RightSidebar() {
+  const { toast } = useToast();
   const {
     discover,
     fetchSuggestions,
@@ -17,32 +47,97 @@ export default function RightSidebar() {
     unfollowUser,
   } = useSocialStore();
 
-  // Always default to arrays/objects to avoid `.map` crashes
-  const suggestions = Array.isArray(discover?.suggestions) ? discover.suggestions : [];
-  const trending    = Array.isArray(discover?.trending)    ? discover.trending    : [];
-  const loading     = discover?.loading || { suggestions: false, trending: false };
-  const error       = discover?.error || null;
+  const [localSuggestions, setLocalSuggestions] = useState([]);
+  const [localTrending, setLocalTrending] = useState([]);
+  const [hydrated, setHydrated] = useState(false);
+
+  const loading = discover?.loading || { suggestions: false, trending: false };
+  const error = discover?.error || null;
 
   useEffect(() => {
-    // fire both; swallow errors (store captures error already)
-    fetchSuggestions(6).catch(() => {});
-    fetchTrending(10).catch(() => {});
+    setHydrated(true);
+    const cached = loadCache();
+    if (cached) {
+      setLocalSuggestions(cached.suggestions);
+      setLocalTrending(cached.trending);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const [sugs, tags] = await Promise.all([
+          fetchSuggestions(6).catch(() => null),
+          fetchTrending(10).catch(() => null),
+        ]);
+        if (cancelled) return;
+
+        const freshSuggestions = Array.isArray(sugs) ? sugs : (discover?.suggestions || []);
+        const freshTrending = Array.isArray(tags) ? tags : (discover?.trending || []);
+
+        setLocalSuggestions(Array.isArray(freshSuggestions) ? freshSuggestions : []);
+        setLocalTrending(Array.isArray(freshTrending) ? freshTrending : []);
+        saveCache(freshSuggestions, freshTrending);
+      } catch {
+        // ignore; use cache if any
+      }
+    };
+    run();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleFollowToggle = async (candidate) => {
     try {
+      // optimistic UI
+      setLocalSuggestions((prev) =>
+        prev.map((x) =>
+          x.id === candidate.id ? { ...x, isFollowing: !x.isFollowing } : x
+        )
+      );
       if (candidate.isFollowing) {
         await unfollowUser(candidate.id);
+        toast({ title: "Unfollowed", description: `@${candidate.username}` });
       } else {
         await followUser(candidate.id);
+        toast({ title: "Following", description: `@${candidate.username}` });
       }
-      // optional: refresh suggestions to reflect new state / replace row
-      fetchSuggestions(6).catch(() => {});
-    } catch (e) {
-      console.error('Follow toggle failed', e);
+      // refresh suggestions
+      fetchSuggestions(6).then((arr) => {
+        if (Array.isArray(arr)) {
+          setLocalSuggestions(arr);
+          saveCache(arr, localTrending);
+        }
+      });
+    } catch {
+      // revert optimistic on error
+      setLocalSuggestions((prev) =>
+        prev.map((x) =>
+          x.id === candidate.id ? { ...x, isFollowing: candidate.isFollowing } : x
+        )
+      );
+      toast({
+        variant: "destructive",
+        title: "Action failed",
+        description: "Please try again.",
+      });
     }
   };
+
+  const suggestions = useMemo(
+    () =>
+      (hydrated ? localSuggestions : []) ??
+      (Array.isArray(discover?.suggestions) ? discover.suggestions : []),
+    [hydrated, localSuggestions, discover?.suggestions]
+  );
+
+  const trending = useMemo(
+    () =>
+      (hydrated ? localTrending : []) ??
+      (Array.isArray(discover?.trending) ? discover.trending : []),
+    [hydrated, localTrending, discover?.trending]
+  );
 
   return (
     <div className="space-y-6">
@@ -55,7 +150,7 @@ export default function RightSidebar() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {loading.suggestions ? (
+          {loading.suggestions && suggestions.length === 0 ? (
             <div className="space-y-3 p-4">
               {Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="flex items-center justify-between">
@@ -81,7 +176,7 @@ export default function RightSidebar() {
                     <Avatar className="w-10 h-10">
                       <AvatarImage src={s.profilePicture || s.avatar || undefined} />
                       <AvatarFallback className="bg-gray-700 text-white text-sm">
-                        {(s.username || '?').charAt(0).toUpperCase()}
+                        {(s.username || "?").charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div>
@@ -93,21 +188,21 @@ export default function RightSidebar() {
                       </Link>
                       <p className="text-xs text-gray-400">
                         {Number(s.followersCount || 0).toLocaleString()} followers
-                        {s.mutualsCount ? ` · ${s.mutualsCount} mutual` : ''}
+                        {s.mutualsCount ? ` · ${s.mutualsCount} mutual` : ""}
                       </p>
                     </div>
                   </div>
                   <Button
                     size="sm"
-                    variant={s.isFollowing ? 'outline' : 'default'}
+                    variant={s.isFollowing ? "outline" : "default"}
                     className={
                       s.isFollowing
-                        ? 'border-gray-600 text-gray-300 hover:bg-gray-800'
-                        : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        ? "border-gray-600 text-gray-300 hover:bg-gray-800"
+                        : "bg-blue-600 hover:bg-blue-700 text-white"
                     }
                     onClick={() => handleFollowToggle(s)}
                   >
-                    {s.isFollowing ? 'Following' : 'Follow'}
+                    {s.isFollowing ? "Following" : "Follow"}
                   </Button>
                 </div>
               ))}
@@ -122,10 +217,11 @@ export default function RightSidebar() {
             </div>
           ) : (
             <div className="p-4 text-sm text-gray-400">
-              No suggestions right now. Explore more creators on{' '}
+              No suggestions right now. Explore more creators on{" "}
               <Link href="/discover/people" className="text-blue-400 hover:text-blue-300">
                 People
-              </Link>.
+              </Link>
+              .
             </div>
           )}
         </CardContent>
@@ -140,7 +236,7 @@ export default function RightSidebar() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {loading.trending ? (
+          {loading.trending && trending.length === 0 ? (
             <div className="space-y-3 p-4">
               {Array.from({ length: 5 }).map((_, i) => (
                 <div key={i} className="flex items-center justify-between">
@@ -159,7 +255,7 @@ export default function RightSidebar() {
             <div className="space-y-0">
               {trending.map((tag, index) => (
                 <Link
-                  key={tag.id}
+                  key={tag.id ?? tag.tag}
                   href={`/explore/tags/${encodeURIComponent(tag.tag)}`}
                   className="flex items-center justify-between p-4 hover:bg-gray-800 transition-colors"
                 >
@@ -174,14 +270,14 @@ export default function RightSidebar() {
                       </p>
                     </div>
                   </div>
-                  <span className="text-xs text-gray-500">#{tag.rank ?? index + 1}</span>
+                  <span className="text-xs text-gray-500">
+                    #{(tag.rank ?? index + 1)}
+                  </span>
                 </Link>
               ))}
             </div>
           ) : (
-            <div className="p-4 text-sm text-gray-400">
-              Nothing trending yet.
-            </div>
+            <div className="p-4 text-sm text-gray-400">Nothing trending yet.</div>
           )}
         </CardContent>
       </Card>
@@ -208,7 +304,7 @@ export default function RightSidebar() {
           <span>•</span>
           <Link href="/locations" className="hover:text-gray-400">Locations</Link>
         </div>
-        <p className="text-gray-600">© 2024 Instagram Clone</p>
+        <p className="text-gray-600">© {new Date().getFullYear()} Instagram Clone</p>
       </div>
     </div>
   );

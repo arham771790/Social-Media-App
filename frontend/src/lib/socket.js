@@ -42,19 +42,17 @@ export const emitTyping = (kind, payload) => {
 };
 
 // ---- WebRTC signaling helpers (socket events) ----
-export const sendOffer = (roomId, sdp, fromUser) => {
-  if (!socket) return;
-  socket.emit("call:offer", { roomId, sdp, fromUser });
-};
-export const sendAnswer = (roomId, sdp, fromUser) => {
-  if (!socket) return;
-  socket.emit("call:answer", { roomId, sdp, fromUser });
-};
-export const sendCandidate = (roomId, candidate, fromUser) => {
-  if (!socket) return;
-  socket.emit("call:candidate", { roomId, candidate, fromUser });
-};
-export const endCall = (roomId, reason = "ended") => {
-  if (!socket) return;
-  socket.emit("call:end", { roomId, reason });
-};
+export const ring = (roomId, { fromUser, mode = "audio" }) =>
+  socket?.emit("call:ring", { roomId, fromUser, mode });
+
+export const sendOffer = (roomId, sdp, fromUser) =>
+  socket?.emit("call:offer", { roomId, sdp, fromUser });
+
+export const sendAnswer = (roomId, sdp, fromUser) =>
+  socket?.emit("call:answer", { roomId, sdp, fromUser });
+
+export const sendCandidate = (roomId, candidate, fromUser) =>
+  socket?.emit("call:candidate", { roomId, candidate, fromUser });
+
+export const endCall = (roomId, reason = "user_end") =>
+  socket?.emit("call:end", { roomId, reason });

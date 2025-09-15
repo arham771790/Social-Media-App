@@ -289,7 +289,24 @@ groupDetailsById: {},           // optional cache if you later add a /messages/:
       throw e;
     }
   },
+  sendCallLog: async (chatGroupId, { status, mode = "audio", actor = "self" } = {}) => {
+  // Server should treat type=CALL_INVITE messages as system call logs.
+  // content example like Instagram: "Missed voice call" / "Video call ended"
+  const verb = status === "MISSED" ? "Missed" : "Ended";
+  const kind = mode === "video" ? "video" : "voice";
+  const content = `${verb} ${kind} call`;
 
+  try {
+    await api.post(`/messages/${chatGroupId}`, {
+      type: "CALL_INVITE",
+      content,
+      isSystem: true,
+    });
+  } catch (e) {
+    // not fatal to UI
+    console.warn("sendCallLog failed", e?.message || e);
+  }
+},
   // ----- SEARCH & CREATE -----
   // ----- SEARCH & CREATE -----
 searchUsers: async (q) => {

@@ -18,6 +18,7 @@ import feedRoutes from "./routes/feedRoutes.js";
 import healthRoutes from "./routes/healthRoutes.js";
 import discoverRoutes from "./routes/discoverRoutes.js";
 import exploreRoutes from "./routes/exploreRoutes.js";
+import verifyRoutes from "./routes/verifyRoutes.js";
 
 
 // import rtcRoutes from "./routes/rtcRoutes.js"; // optional
@@ -32,7 +33,7 @@ dotenv.config();
 const app = express();
 
 // --- CORS (parse env correctly and trim) ---
-const origins = ( process.env.CORS_ORIGINS || "http://localhost:3000")
+const origins = ( "http://localhost:3000")
   .split(",")
   .map(s => s.trim())
   .filter(Boolean);
@@ -62,6 +63,7 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/health", healthRoutes);
 app.use("/api/explore", exploreRoutes);
 app.use("/api/discover", discoverRoutes);
+app.use("/api/auth", verifyRoutes);
 // app.use("/api/rtc", rtcRoutes); // if added
 
 // --- Swagger (safe load) ---

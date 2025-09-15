@@ -31,6 +31,62 @@ export const useAuthStore = create((set, get) => ({
       // noop
     }
   },
+     requestEmailVerification: async (email) => {
+    try {
+      const { data } = await api.post("/auth/verify-email/request", { email });
+      // optional: set({ ... }) but do NOT toggle isLoading here
+      return data; // { message } or { ok: true }
+    } catch (err) {
+      const msg = err?.response?.data?.error || "Failed to send code";
+      set({ error: msg });
+      throw new Error(msg);
+    }
+  },
+
+  confirmEmailVerification: async ({ email, code }) => {
+    try {
+      const { data } = await api.post("/auth/verify-email/confirm", { email, code });
+      // Accept { verifyToken }, { token }, or similar
+      const token = data?.verifyToken || data?.token || data?.data?.verifyToken;
+      if (!token) throw new Error("Verification failed");
+      return token;
+    } catch (err) {
+      const msg = err?.response?.data?.error || "Invalid or expired code";
+      set({ error: msg });
+      throw new Error(msg);
+    }
+  },
+
+  registerVerified: async ({ username, email, password, verifyToken }) => {
+    try {
+      // Do NOT set global isLoading here either; page shows local spinner
+      const { data } = await api.post("/auth/register", {
+        username,
+        email,
+        password,
+        verifyToken,
+      });
+
+      // If backend logs in immediately
+      if (data?.token && data?.user) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem("token", data.token);
+          localStorage.setItem("user", JSON.stringify(data.user));
+        }
+        set({
+          token: data.token,
+          user: data.user,
+          isAuthenticated: true,
+          error: null,
+        });
+      }
+      return data;
+    } catch (err) {
+      const msg = err?.response?.data?.error || "Registration failed";
+      set({ error: msg });
+      throw new Error(msg);
+    }
+  },
 
   // Auth — Register
   register: async ({ username, email, password }) => {

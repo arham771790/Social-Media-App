@@ -2,6 +2,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import AppToaster from "@/components/ui/AppToaster";
 
 import "./globals.css";
+import IncomingCallCenter from "@/components/messages/call/IncomingCallCenter";
+import CallPanelHost from "@/components/messages/call/CallPanelHost";
+import { Toast } from "@/components/ui/toast";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,6 +29,9 @@ export default function RootLayout({ children }) {
       >
         {children}
          <AppToaster position="top-right"/>
+         <Toast position="top-left"/>
+          <CallPanelHost/>
+          <IncomingCallCenter/>
       </body>
     </html>
   );
