@@ -1,9 +1,4 @@
-Here are two drop-in README files—one for the backend and one for the frontend—tailored to the code you shared (Prisma + PostgreSQL, Socket.IO presence/typing, REST endpoints, Next.js client with Zustand + Axios). Copy them into:
 
-* `backend/README.md`
-* `frontend/README.md`
-
----
 
 # Backend README (`backend/README.md`)
 
