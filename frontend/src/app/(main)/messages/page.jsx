@@ -31,35 +31,42 @@ export default function MessagesPage() {
     loadingMessagesByGroup,
   } = useMessageStore();
 
-  const [activeId, setActiveId] = useState(
-    typeof window !== "undefined" ? localStorage.getItem(ACTIVE_KEY) : null
-  );
+  const [activeId, setActiveId] = useState(null);
   const [newOpen, setNewOpen] = useState(false);
-  const [groupOpen, setGroupOpen] = useState(false); // ✅ new group dialog state
-  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
+  const [groupOpen, setGroupOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+
+  const [threadError, setThreadError] = useState(false);
+  const [msgError, setMsgError] = useState(false);
 
   // Initial data
   useEffect(() => {
     if (!token) return;
     bindSocket();
-    fetchThreads().then((ts) => {
-      if (!ts?.length) setNewOpen(true);
-      if (!activeId && ts?.length) setActiveId(ts[0].id);
-    });
+    setThreadError(false);
+    fetchThreads()
+      .then((ts) => {
+        if (!ts?.length) setNewOpen(true);
+        if (!activeId && ts?.length) setActiveId(ts[0].id);
+      })
+      .catch(() => setThreadError(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // Load messages for active thread
   useEffect(() => {
     if (!activeId) return;
-    fetchMessages(activeId).then(() => markAsRead(activeId)).catch(() => {});
+    setMsgError(false);
+    fetchMessages(activeId)
+      .then(() => markAsRead(activeId))
+      .catch(() => setMsgError(true));
     joinRoom(activeId);
     refreshPresence(activeId);
     localStorage.setItem(ACTIVE_KEY, activeId);
 
     if (typeof window !== "undefined" && window.innerWidth < 768) {
-      setSidebarOpen(false); // auto-close drawer on mobile
+      setSidebarOpen(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
@@ -85,19 +92,40 @@ export default function MessagesPage() {
       <div className="relative h-[calc(100dvh-64px)] max-w-6xl mx-auto border border-border/50 md:rounded-xl md:overflow-hidden min-h-0 grid md:grid-cols-[20rem_1fr] shadow-lg bg-background [padding-bottom:env(safe-area-inset-bottom)]">
         {/* Sidebar (desktop) */}
         <aside className="hidden md:block bg-card/95 backdrop-blur-sm border-r border-border/50">
-          <ConversationList
-            threads={threads}
-            activeId={activeId}
-            onPick={(id) => setActiveId(id)}
-            onNew={() => setNewOpen(true)}
-            totalUnread={totalUnread}
-            isLoading={loadingThreads}
-          />
+          {loadingThreads ? (
+            <div className="p-4 space-y-3 animate-pulse">
+              <div className="h-6 w-32 bg-gray-700 rounded" />
+              <div className="h-6 w-40 bg-gray-700 rounded" />
+              <div className="h-6 w-28 bg-gray-700 rounded" />
+            </div>
+          ) : threadError ? (
+            <div className="p-4 text-center">
+              <p className="text-sm text-red-400">Failed to load threads.</p>
+              <button
+                onClick={() => {
+                  setThreadError(false);
+                  fetchThreads();
+                }}
+                className="mt-2 px-3 py-1 bg-red-600 rounded text-white text-sm"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <ConversationList
+              threads={threads}
+              activeId={activeId}
+              onPick={(id) => setActiveId(id)}
+              onNew={() => setNewOpen(true)}
+              totalUnread={totalUnread}
+              isLoading={loadingThreads}
+            />
+          )}
         </aside>
 
         {/* Chat pane */}
         <section className="flex flex-col min-h-0">
-          {/* Mobile list header: SHOW only when no active chat on mobile */}
+          {/* Mobile list header */}
           <div className="md:hidden">
             {!activeId && (
               <div className="sticky top-0 z-30 border-b border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70">
@@ -112,7 +140,6 @@ export default function MessagesPage() {
                   </button>
                   <h2 className="text-lg font-semibold">Messages</h2>
                   <div className="flex items-center gap-2">
-                    {/* New message button */}
                     <button
                       onClick={() => setNewOpen(true)}
                       className="p-2 rounded-full bg-gradient-to-r from-pink-600 to-purple-600 text-white hover:opacity-90"
@@ -120,7 +147,6 @@ export default function MessagesPage() {
                     >
                       <MessageSquarePlus className="w-4 h-4" />
                     </button>
-                    {/* ✅ New group button opens NewGroupDialog */}
                     <button
                       onClick={() => setGroupOpen(true)}
                       className="p-2 rounded-full border border-border/60 hover:bg-muted/30"
@@ -134,54 +160,91 @@ export default function MessagesPage() {
             )}
           </div>
 
-          {/* When no chat selected – show conversation list (mobile) */}
+          {/* Mobile conversation list */}
           <div className="md:hidden flex-1 min-h-0">
-            {!activeId && (
-              <ConversationList
-                threads={threads}
-                activeId={activeId}
-                onPick={(id) => setActiveId(id)}
-                onNew={() => setNewOpen(true)}
-                totalUnread={totalUnread}
-                isLoading={loadingThreads}
-              />
-            )}
+            {!activeId &&
+              (loadingThreads ? (
+                <div className="p-4 space-y-3 animate-pulse">
+                  <div className="h-6 w-32 bg-gray-700 rounded" />
+                  <div className="h-6 w-40 bg-gray-700 rounded" />
+                </div>
+              ) : threadError ? (
+                <div className="p-4 text-center">
+                  <p className="text-sm text-red-400">Failed to load threads.</p>
+                  <button
+                    onClick={() => {
+                      setThreadError(false);
+                      fetchThreads();
+                    }}
+                    className="mt-2 px-3 py-1 bg-red-600 rounded text-white text-sm"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <ConversationList
+                  threads={threads}
+                  activeId={activeId}
+                  onPick={(id) => setActiveId(id)}
+                  onNew={() => setNewOpen(true)}
+                  totalUnread={totalUnread}
+                  isLoading={loadingThreads}
+                />
+              ))}
           </div>
 
-          {/* When a chat is selected */}
+          {/* Chat selected */}
           {activeId && (
             <>
-              {/* Chat header (has its own Back to list) */}
               <div className="sticky top-0 z-20">
                 <ChatHeader
                   thread={activeThread}
                   onToggleSidebar={() => setSidebarOpen((v) => !v)}
-                  onBack={() => setActiveId(null)} // back to list on mobile
+                  onBack={() => setActiveId(null)}
                   showBackOnMobile
                   hasActive={!!activeId}
                   onToggleInfo={() => setInfoOpen(true)}
                 />
               </div>
 
-              <ChatContainer
-                key={activeId}
-                thread={activeThread}
-                items={msgs}
-                meId={user?.id}
-                loading={isLoadingMsgs}
-                bottomPaddingClass="pb-24 md:pb-28 [padding-bottom:env(safe-area-inset-bottom)]"
-              />
-
-              {/* Sticky composer footer */}
-              <div className="sticky bottom-0 z-20 border-t border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70 [padding-bottom:env(safe-area-inset-bottom)]">
-                <Composer chatGroupId={activeId} />
-              </div>
+              {isLoadingMsgs ? (
+                <div className="flex-1 flex items-center justify-center animate-pulse text-gray-400">
+                  Loading messages...
+                </div>
+              ) : msgError ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-center">
+                  <p className="text-sm text-red-400">Failed to load messages.</p>
+                  <button
+                    onClick={() => {
+                      setMsgError(false);
+                      fetchMessages(activeId);
+                    }}
+                    className="mt-2 px-3 py-1 bg-red-600 rounded text-white text-sm"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <ChatContainer
+                    key={activeId}
+                    thread={activeThread}
+                    items={msgs}
+                    meId={user?.id}
+                    loading={isLoadingMsgs}
+                    bottomPaddingClass="pb-24 md:pb-28 [padding-bottom:env(safe-area-inset-bottom)]"
+                  />
+                  <div className="sticky bottom-0 z-20 border-t border-border/60 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/70 [padding-bottom:env(safe-area-inset-bottom)]">
+                    <Composer chatGroupId={activeId} />
+                  </div>
+                </>
+              )}
             </>
           )}
         </section>
       </div>
 
-      {/* Mobile sidebar overlay */}
+      {/* Mobile overlay + drawer */}
       <div
         className={[
           "fixed inset-0 bg-black/40 z-40 md:hidden",
@@ -189,7 +252,6 @@ export default function MessagesPage() {
         ].join(" ")}
         onClick={() => setSidebarOpen(false)}
       />
-      {/* Mobile sidebar drawer */}
       <div
         className={[
           "fixed inset-y-0 left-0 w-[85%] max-w-xs z-50 md:hidden transition-transform duration-300 ease-in-out",
@@ -208,21 +270,17 @@ export default function MessagesPage() {
         </div>
       </div>
 
-      {/* New message dialog */}
+      {/* Dialogs */}
       <NewMessageDialog
         open={newOpen}
         onOpenChange={setNewOpen}
         onCreated={handleNewChatCreated}
       />
-
-      {/* ✅ New group dialog */}
       <NewGroupDialog
         open={groupOpen}
         onOpenChange={setGroupOpen}
         onCreated={handleNewChatCreated}
       />
-
-      {/* Info dialog */}
       <InfoDialog
         open={infoOpen}
         onOpenChange={setInfoOpen}
