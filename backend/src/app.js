@@ -33,7 +33,7 @@ dotenv.config();
 const app = express();
 
 // --- CORS (parse env correctly and trim) ---
-const origins = ( process.env.CORS_ORIGINS|| "http://localhost:3000" )
+const origins = (process.env.CORS_ORIGINS ||  "http://localhost:3000" )
   .split(",")
   .map(s => s.trim())
   .filter(Boolean);
@@ -50,6 +50,8 @@ app.use(passport.initialize());
 
 // --- Routes (make sure your Axios baseURL is <API_URL>/api) ---
 app.use("/api/auth", authRoutes);
+
+app.use("/api/users",userRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api", feedRoutes);

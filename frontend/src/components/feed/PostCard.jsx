@@ -1,3 +1,4 @@
+// PostCard.jsx
 'use client';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
@@ -28,6 +29,10 @@ export default function PostCard({ post }) {
   const { user: currentUser } = useAuthStore();
   const { followUser, unfollowUser, getFollowing, followingByUser, followPending } = useSocialStore();
 
+  // 🔁 local mirror so UI updates instantly
+  const [p, setP] = useState(post);
+  useEffect(() => setP(post), [post]);
+
   const [showFullContent, setShowFullContent] = useState(false);
   const [showComments, setShowComments] = useState(false);
   const [confirmUnfollow, setConfirmUnfollow] = useState(false);
@@ -35,13 +40,13 @@ export default function PostCard({ post }) {
   const [likePending, setLikePending] = useState(false);
   const [bookmarkPending, setBookmarkPending] = useState(false);
 
-  const isOwnPost = currentUser?.id === post.author.id;
+  const isOwnPost = currentUser?.id === p.author.id;
 
   // Following cache
   const myKey = String(currentUser?.id || '');
   const myFollowing = followingByUser[myKey]?.items || [];
   const cachedFollowing = useMemo(() => new Set(myFollowing.map((u) => u.id)), [myFollowing]);
-  const isFollowing = cachedFollowing.has(post.author.id) || !!post.author.isFollowing;
+  const isFollowing = cachedFollowing.has(p.author.id) || !!p.author.isFollowing;
 
   useEffect(() => {
     if (!currentUser?.id) return;
@@ -54,8 +59,18 @@ export default function PostCard({ post }) {
     if (likePending) return;
     setLikePending(true);
     try {
-      const res = await toggleLike(post.id);
-      patchFeedItem(post.id, { isLiked: res.isLiked, likesCount: res.likesCount });
+      // optimistic
+      const nextLiked = !p.isLiked;
+      const nextLikes = (p.likesCount || 0) + (nextLiked ? 1 : -1);
+      setP((old) => ({ ...old, isLiked: nextLiked, likesCount: Math.max(0, nextLikes) }));
+
+      const res = await toggleLike(p.id); // expects {isLiked, likesCount}
+      // sync with backend result
+      setP((old) => ({ ...old, isLiked: res.isLiked, likesCount: res.likesCount }));
+      patchFeedItem(p.id, { isLiked: res.isLiked, likesCount: res.likesCount });
+    } catch {
+      // revert on error (optional: refetch)
+      setP(post);
     } finally {
       setLikePending(false);
     }
@@ -65,8 +80,22 @@ export default function PostCard({ post }) {
     if (bookmarkPending) return;
     setBookmarkPending(true);
     try {
-      const res = await toggleBookmark(post.id);
-      patchFeedItem(post.id, { isBookmarked: res.isBookmarked });
+      // optimistic
+      const nextBookmarked = !p.isBookmarked;
+      setP((old) => ({ ...old, isBookmarked: nextBookmarked }));
+
+      const res = await toggleBookmark(p.id); // expects {isBookmarked} (optionally bookmarksCount)
+      setP((old) => ({
+        ...old,
+        isBookmarked: !!res.isBookmarked,
+        ...(typeof res.bookmarksCount === 'number' ? { bookmarksCount: res.bookmarksCount } : {}),
+      }));
+      patchFeedItem(p.id, {
+        isBookmarked: !!res.isBookmarked,
+        ...(typeof res.bookmarksCount === 'number' ? { bookmarksCount: res.bookmarksCount } : {}),
+      });
+    } catch {
+      setP(post);
     } finally {
       setBookmarkPending(false);
     }
@@ -74,7 +103,7 @@ export default function PostCard({ post }) {
 
   const onFollow = async () => {
     try {
-      await followUser(post.author.id);
+      await followUser(p.author.id);
       getFollowing(currentUser.id, { page: 1, limit: 100 }).catch(() => {});
     } catch (e) {
       console.error(e);
@@ -83,20 +112,22 @@ export default function PostCard({ post }) {
 
   const onUnfollow = async () => {
     setConfirmUnfollow(false);
-    await unfollowUser(post.author.id);
+    await unfollowUser(p.author.id);
     getFollowing(currentUser.id, { page: 1, limit: 100 }).catch(() => {});
   };
 
   const contentPreview =
-    post.content?.length > 200 ? `${post.content.substring(0, 200)}...` : post.content;
+    p.content?.length > 200 ? `${p.content.substring(0, 200)}...` : p.content;
 
   const looksLikeVideo = (url) =>
     typeof url === 'string' && /\.(mp4|mov|webm|mkv|ogg)(\?|$)/i.test(url);
-  const isVideo = post?.type === 'VIDEO' || looksLikeVideo(post?.mediaUrl);
+  const isVideo = p?.type === 'VIDEO' || looksLikeVideo(p?.mediaUrl);
 
-  const profileHref = post?.author?.username
-    ? `/u/${post.author.username}`
-    : `/users/${post.author.id}`;
+  const profileHref = p?.author?.username ? `/u/${p.author.username}` : `/users/${p.author.id}`;
+
+  // 🔼 helpers to keep comment count in sync with Comments component
+  const bumpComments = (delta = 1) =>
+    setP((old) => ({ ...old, commentsCount: Math.max(0, (old.commentsCount || 0) + delta) }));
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }} className="mb-6">
@@ -105,15 +136,15 @@ export default function PostCard({ post }) {
         <div className="p-3 sm:p-4 flex items-center justify-between">
           <Link href={profileHref} className="flex items-center space-x-3 group/author truncate">
             <Avatar className="w-9 h-9 sm:w-10 sm:h-10">
-              <AvatarImage src={post.author.avatar} />
-              <AvatarFallback>{post.author.username[0].toUpperCase()}</AvatarFallback>
+              <AvatarImage src={p.author.avatar} />
+              <AvatarFallback>{p.author.username?.[0]?.toUpperCase()}</AvatarFallback>
             </Avatar>
             <div className="truncate">
               <p className="font-semibold text-foreground truncate group-hover/author:underline">
-                {post.author.username}
+                {p.author.username}
               </p>
               <p className="text-xs sm:text-sm text-muted-foreground">
-                {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
+                {formatDistanceToNow(new Date(p.createdAt), { addSuffix: true })}
               </p>
             </div>
           </Link>
@@ -125,21 +156,13 @@ export default function PostCard({ post }) {
                   size="sm"
                   variant="secondary"
                   onClick={() => setConfirmUnfollow(true)}
-                  disabled={followPending[String(post.author.id)]}
+                  disabled={followPending[String(p.author.id)]}
                 >
-                  {followPending[String(post.author.id)] ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    "Following"
-                  )}
+                  {followPending[String(p.author.id)] ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Following'}
                 </Button>
               ) : (
-                <Button size="sm" onClick={onFollow} disabled={followPending[String(post.author.id)]}>
-                  {followPending[String(post.author.id)] ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    "Follow"
-                  )}
+                <Button size="sm" onClick={onFollow} disabled={followPending[String(p.author.id)]}>
+                  {followPending[String(p.author.id)] ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Follow'}
                 </Button>
               )
             )}
@@ -168,33 +191,33 @@ export default function PostCard({ post }) {
         </div>
 
         {/* Title */}
-        {post.title && (
+        {p.title && (
           <div className="px-3 sm:px-4 pb-2">
-            <h3 className="text-base sm:text-lg font-semibold text-foreground break-words">{post.title}</h3>
+            <h3 className="text-base sm:text-lg font-semibold text-foreground break-words">{p.title}</h3>
           </div>
         )}
 
         {/* Media */}
-        {post.mediaUrl && (
+        {p.mediaUrl && (
           <MediaRenderer
             className="w-full max-h-[300px] sm:max-h-[600px] bg-muted"
             media={[
               {
-                url: post.mediaUrl,
+                url: p.mediaUrl,
                 type: isVideo ? 'video' : 'image',
-                thumbnail: post.thumbnailUrl || undefined,
+                thumbnail: p.thumbnailUrl || undefined,
               },
             ]}
           />
         )}
 
         {/* Content */}
-        {post.content && (
+        {p.content && (
           <div className="px-3 sm:px-4 py-2">
-            <p className={`text-sm sm:text-base text-foreground leading-relaxed ${!showFullContent ? "line-clamp-3 sm:line-clamp-none" : ""}`}>
-              {showFullContent ? post.content : contentPreview}
+            <p className={`text-sm sm:text-base text-foreground leading-relaxed ${!showFullContent ? 'line-clamp-3 sm:line-clamp-none' : ''}`}>
+              {showFullContent ? p.content : contentPreview}
             </p>
-            {post.content.length > 200 && (
+            {p.content.length > 200 && (
               <button
                 onClick={() => setShowFullContent(!showFullContent)}
                 className="mt-1 text-primary hover:underline text-sm font-medium"
@@ -206,17 +229,17 @@ export default function PostCard({ post }) {
         )}
 
         {/* Tags */}
-        {!!post.tags?.length && (
+        {!!p.tags?.length && (
           <div className="px-3 sm:px-4 pb-3">
             <div className="flex flex-wrap gap-2">
-              {post.tags.slice(0, 3).map((tag) => (
+              {p.tags.slice(0, 3).map((tag) => (
                 <Badge key={tag} variant="secondary" className="text-xs">
                   #{tag}
                 </Badge>
               ))}
-              {post.tags.length > 3 && (
+              {p.tags.length > 3 && (
                 <Badge variant="outline" className="text-xs">
-                  +{post.tags.length - 3} more
+                  +{p.tags.length - 3} more
                 </Badge>
               )}
             </div>
@@ -231,16 +254,16 @@ export default function PostCard({ post }) {
                 {likePending ? (
                   <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                 ) : (
-                  <motion.div animate={post.isLiked ? { scale: [1, 1.2, 1] } : { scale: 1 }} transition={{ duration: 0.3 }}>
-                    <Heart className={`w-6 h-6 transition-colors ${post.isLiked ? 'fill-red-500 text-red-500' : 'text-muted-foreground group-hover:text-red-500'}`} />
+                  <motion.div animate={p.isLiked ? { scale: [1, 1.2, 1] } : { scale: 1 }} transition={{ duration: 0.3 }}>
+                    <Heart className={`w-6 h-6 transition-colors ${p.isLiked ? 'fill-red-500 text-red-500' : 'text-muted-foreground group-hover:text-red-500'}`} />
                   </motion.div>
                 )}
-                <span className="text-sm font-medium">{post.likesCount}</span>
+                <span className="text-sm font-medium">{p.likesCount}</span>
               </motion.button>
 
               <button className="flex items-center space-x-2 group" onClick={() => setShowComments((s) => !s)}>
                 <MessageCircle className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
-                <span className="text-sm font-medium">{post.commentsCount || 0}</span>
+                <span className="text-sm font-medium">{p.commentsCount || 0}</span>
               </button>
 
               <button className="flex items-center space-x-2 group">
@@ -252,21 +275,28 @@ export default function PostCard({ post }) {
               {bookmarkPending ? (
                 <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
               ) : (
-                <Bookmark className={`w-6 h-6 transition-colors ${post.isBookmarked ? 'fill-primary text-primary' : 'text-muted-foreground group-hover:text-primary'}`} />
+                <Bookmark className={`w-6 h-6 transition-colors ${p.isBookmarked ? 'fill-primary text-primary' : 'text-muted-foreground group-hover:text-primary'}`} />
               )}
             </motion.button>
           </div>
         </div>
 
         {/* Comments */}
-        {showComments && <Comments postId={post.id} />}
+        {showComments && (
+          <Comments
+            postId={p.id}
+            // ⬇️ let child notify parent to keep count accurate
+            onAdded={() => bumpComments(1)}
+            onDeleted={() => bumpComments(-1)}
+          />
+        )}
       </Card>
 
       {/* Unfollow Confirm */}
       <Dialog open={confirmUnfollow} onOpenChange={setConfirmUnfollow}>
         <DialogContent className="max-w-sm">
           <div className="space-y-3">
-            <h3 className="text-lg font-semibold">Unfollow @{post.author.username}?</h3>
+            <h3 className="text-lg font-semibold">Unfollow @{p.author.username}?</h3>
             <p className="text-sm text-muted-foreground">You’ll stop seeing their posts in your feed.</p>
             <div className="flex justify-end gap-2 pt-2">
               <Button variant="ghost" onClick={() => setConfirmUnfollow(false)}>Cancel</Button>

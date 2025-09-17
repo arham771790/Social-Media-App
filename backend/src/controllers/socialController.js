@@ -2,6 +2,17 @@
 import prisma from "../utils/db.js";
 import { StatusCodes } from "http-status-codes";
 import { createAndEmitNotification } from "./notificationController.js";
+/* ------------ helper: can the viewer see private content? ------------ */
+async function canViewPrivateContent(targetUserId, viewerId) {
+  if (!viewerId) return false;
+  if (viewerId === targetUserId) return true;
+
+  const rel = await prisma.follow.findUnique({
+    where: { followerId_followingId: { followerId: viewerId, followingId: targetUserId } },
+    select: { status: true },
+  });
+  return rel?.status === "ACCEPTED";
+}
 
 /* --------------------------------
    FOLLOW / UNFOLLOW (with private requests)
@@ -94,7 +105,7 @@ export const unfollowUser = async (req, res) => {
 
 export const acceptFollowRequest = async (req, res) => {
   try {
-    const followingId = req.userId;
+    const followingId = req.userId; // the private account owner
     const { followerId } = req.params;
 
     const reqRow = await prisma.follow.findUnique({
@@ -118,6 +129,16 @@ export const acceptFollowRequest = async (req, res) => {
       message: "accepted your follow request",
       relatedUserId: followingId,
     });
+    await prisma.notification.updateMany({
+  where: {
+    recipientId: followingId,        // the account that received the request
+    type: "FOLLOW_REQUEST",
+    relatedUserId: followerId,       // who sent the request
+    read: false,
+  },
+  data: { read: true },
+});
+
 
     return res.status(StatusCodes.OK).json({ ok: true });
   } catch (err) {
@@ -128,7 +149,7 @@ export const acceptFollowRequest = async (req, res) => {
 
 export const declineFollowRequest = async (req, res) => {
   try {
-    const followingId = req.userId;
+    const followingId = req.userId; // the private account owner
     const { followerId } = req.params;
 
     const reqRow = await prisma.follow.findUnique({
@@ -145,7 +166,15 @@ export const declineFollowRequest = async (req, res) => {
       where: { followerId_followingId: { followerId, followingId } },
       data: { status: "DECLINED", respondedAt: new Date() },
     });
-
+    await prisma.notification.updateMany({
+  where: {
+    recipientId: followingId,
+    type: "FOLLOW_REQUEST",
+    relatedUserId: followerId,
+    read: false,
+  },
+  data: { read: true },
+});
     return res.status(StatusCodes.OK).json({ ok: true });
   } catch (err) {
     console.error("declineFollowRequest error:", err);
@@ -154,7 +183,8 @@ export const declineFollowRequest = async (req, res) => {
 };
 
 /* --------------------------------
-   FOLLOWERS / FOLLOWING lists (ACCEPTED only)
+   FOLLOWERS / FOLLOWING lists
+   Visible to: self OR public account OR accepted follower
 ----------------------------------- */
 
 export const getFollowers = async (req, res) => {
@@ -174,7 +204,9 @@ export const getFollowers = async (req, res) => {
     if (!user) {
       return res.status(StatusCodes.NOT_FOUND).json({ error: "User not found." });
     }
-    if (!user.isPublic && !isSelf) {
+
+    const allowed = user.isPublic || isSelf || (await canViewPrivateContent(id, viewerId));
+    if (!allowed) {
       return res.status(StatusCodes.FORBIDDEN).json({ error: "This account is private." });
     }
 
@@ -203,12 +235,13 @@ export const getFollowers = async (req, res) => {
       followedAt: f.createdAt,
     }));
 
-    const total = await prisma.follow.count({ where: { followingId: id, status: "ACCEPTED" } });
-
-    return res.status(StatusCodes.OK).json({
-      followers,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    const total = await prisma.follow.count({
+      where: { followingId: id, status: "ACCEPTED" },
     });
+
+    return res
+      .status(StatusCodes.OK)
+      .json({ followers, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (err) {
     console.error("getFollowers error:", err);
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to fetch followers." });
@@ -232,7 +265,9 @@ export const getFollowing = async (req, res) => {
     if (!user) {
       return res.status(StatusCodes.NOT_FOUND).json({ error: "User not found." });
     }
-    if (!user.isPublic && !isSelf) {
+
+    const allowed = user.isPublic || isSelf || (await canViewPrivateContent(id, viewerId));
+    if (!allowed) {
       return res.status(StatusCodes.FORBIDDEN).json({ error: "This account is private." });
     }
 
@@ -261,18 +296,63 @@ export const getFollowing = async (req, res) => {
       followedAt: f.createdAt,
     }));
 
-    const total = await prisma.follow.count({ where: { followerId: id, status: "ACCEPTED" } });
-
-    return res.status(StatusCodes.OK).json({
-      following,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    const total = await prisma.follow.count({
+      where: { followerId: id, status: "ACCEPTED" },
     });
+
+    return res
+      .status(StatusCodes.OK)
+      .json({ following, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (err) {
     console.error("getFollowing error:", err);
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to fetch following." });
   }
 };
 
+/* --------------------------------
+   REQUESTS (incoming/outgoing)
+----------------------------------- */
+
+export const getFollowRequests = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const direction = (req.query.direction || "incoming").toString(); // "incoming" | "outgoing"
+    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "20", 10), 1), 100);
+    const skip = (page - 1) * limit;
+
+    const where =
+      direction === "outgoing"
+        ? { followerId: userId, status: "PENDING" }
+        : { followingId: userId, status: "PENDING" };
+
+    const [rows, total] = await Promise.all([
+      prisma.follow.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: "desc" },
+        include:
+          direction === "outgoing"
+            ? { following: { select: { id: true, username: true, avatar: true, isPublic: true } } }
+            : { follower: { select: { id: true, username: true, avatar: true, isPublic: true } } },
+      }),
+      prisma.follow.count({ where }),
+    ]);
+
+    const items =
+      direction === "outgoing"
+        ? rows.map((r) => ({ ...r.following, requestedAt: r.createdAt }))
+        : rows.map((r) => ({ ...r.follower, requestedAt: r.createdAt }));
+
+    return res
+      .status(StatusCodes.OK)
+      .json({ items, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
+  } catch (err) {
+    console.error("getFollowRequests error:", err);
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to fetch requests." });
+  }
+};
 /* --------------------------------
       CONTACTS
 ----------------------------------- */
@@ -402,47 +482,5 @@ export const deleteStory = async (req, res) => {
   } catch (err) {
     console.error("deleteStory error:", err);
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to delete story." });
-  }
-};
-export const getFollowRequests = async (req, res) => {
-  try {
-    const userId = req.userId;
-    const direction = (req.query.direction || "incoming").toString(); // "incoming" | "outgoing"
-    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
-    const limit = Math.min(Math.max(parseInt(req.query.limit || "20", 10), 1), 100);
-    const skip = (page - 1) * limit;
-
-    // Requires Follow.status in your Prisma schema (PENDING/ACCEPTED/DECLINED)
-    const where =
-      direction === "outgoing"
-        ? { followerId: userId, status: "PENDING" }
-        : { followingId: userId, status: "PENDING" };
-
-    const [rows, total] = await Promise.all([
-      prisma.follow.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: { createdAt: "desc" },
-        include:
-          direction === "outgoing"
-            ? { following: { select: { id: true, username: true, avatar: true, isPublic: true } } }
-            : { follower: { select: { id: true, username: true, avatar: true, isPublic: true } } },
-      }),
-      prisma.follow.count({ where }),
-    ]);
-
-    const items =
-      direction === "outgoing"
-        ? rows.map((r) => ({ ...r.following, requestedAt: r.createdAt }))
-        : rows.map((r) => ({ ...r.follower, requestedAt: r.createdAt }));
-
-    return res.status(StatusCodes.OK).json({
-      items,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
-    });
-  } catch (err) {
-    console.error("getFollowRequests error:", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to fetch requests." });
   }
 };

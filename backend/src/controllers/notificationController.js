@@ -53,7 +53,8 @@ export const getNotifications = async (req, res) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit || "20", 10), 1), 100);
     const skip = (page - 1) * limit;
 
-    const [rows, total, unread] = await Promise.all([
+    // 1) fetch notifications page (as before)
+    const [rowsRaw, totalRaw, unread] = await Promise.all([
       prisma.notification.findMany({
         where: { recipientId: userId },
         orderBy: { createdAt: "desc" },
@@ -64,7 +65,38 @@ export const getNotifications = async (req, res) => {
       prisma.notification.count({ where: { recipientId: userId, read: false } }),
     ]);
 
-    // Enrich with relatedUserUsername in one round-trip
+    // 2) For FOLLOW_REQUEST notifications in this page, check follow status in one batch
+    const reqFollowerIds = [
+      ...new Set(
+        rowsRaw
+          .filter((r) => r.type === "FOLLOW_REQUEST" && r.relatedUserId)
+          .map((r) => r.relatedUserId)
+      ),
+    ];
+
+    let followerStatusMap = {};
+    if (reqFollowerIds.length) {
+      const follows = await prisma.follow.findMany({
+        where: {
+          followingId: userId,
+          followerId: { in: reqFollowerIds },
+        },
+        select: { followerId: true, status: true },
+      });
+      followerStatusMap = Object.fromEntries(
+        follows.map((f) => [f.followerId, f.status]) // PENDING | ACCEPTED | DECLINED
+      );
+    }
+
+    // 3) Filter out FOLLOW_REQUEST that are no longer pending
+    const rows = rowsRaw.filter((r) => {
+      if (r.type !== "FOLLOW_REQUEST" || !r.relatedUserId) return true;
+      const st = followerStatusMap[r.relatedUserId];
+      // keep only while still pending (or no follow row found yet)
+      return !st || st === "PENDING";
+    });
+
+    // 4) Enrich with usernames (batch)
     const ids = [...new Set(rows.map((r) => r.relatedUserId).filter(Boolean))];
     let idToUsername = {};
     if (ids.length) {
@@ -80,16 +112,20 @@ export const getNotifications = async (req, res) => {
       relatedUserUsername: r.relatedUserId ? idToUsername[r.relatedUserId] || null : null,
     }));
 
+    // 5) Recompute total/pages based on filtered rows for this page only.
+    //     If you want the top pagination counters to exclude resolved requests globally,
+    //     you’d need to adjust the COUNT too (heavier). For now we keep original total.
     return res.status(StatusCodes.OK).json({
       notifications: enriched,
       unread,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+      pagination: { page, limit, total: totalRaw, pages: Math.ceil(totalRaw / limit) },
     });
   } catch (err) {
     console.error("getNotifications error", err);
     return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to get notifications" });
   }
 };
+
 
 /**
  * GET /api/notifications/unread-count

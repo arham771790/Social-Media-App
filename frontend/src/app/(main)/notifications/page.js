@@ -1,14 +1,15 @@
 // src/app/notifications/page.jsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
+import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
 import { useNotificationStore } from "@/store/notificationStore";
 import { useAuthStore } from "@/store/authStore";
-import { useSocialStore } from "@/store/socialStore"; // ⬅️ uses your existing social store
+import { useSocialStore } from "@/store/socialStore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Bell,
@@ -22,12 +23,18 @@ import {
   XCircle,
   Settings,
   Filter,
+  Eye,
 } from "lucide-react";
 
+/* -----------------------------
+   Helpers (icons, colors, utils)
+-------------------------------*/
 const typeIcon = (type) => {
   switch ((type || "").toUpperCase()) {
     case "FOLLOW":
+      return <UserPlus className="w-4 h-4" />;
     case "FOLLOW_REQUEST":
+      return <UserPlus className="w-4 h-4" />;
     case "FOLLOW_ACCEPTED":
       return <UserPlus className="w-4 h-4" />;
     case "LIKE":
@@ -65,6 +72,73 @@ const getTypeColor = (type) => {
   }
 };
 
+const prettyMessage = (n) => {
+  const t = (n.type || "").toUpperCase();
+  if (t === "FOLLOW_REQUEST") return "sent you a follow request";
+  if (t === "FOLLOW_ACCEPTED") return "accepted your follow request";
+  if (t === "FOLLOW") return "started following you";
+  if (t === "LIKE") return "liked your post";
+  if (t === "COMMENT") return "commented on your post";
+  if (t === "REPLY") return "replied to your comment";
+  if (t === "GROUP_INVITE") return "invited you to join a group";
+  return "You have a new notification";
+};
+
+const groupDateLabel = (date) => {
+  if (isToday(date)) return "Today";
+  if (isYesterday(date)) return "Yesterday";
+  return format(date, "EEE, MMM d, yyyy");
+};
+
+const buildHref = (n) => {
+  if (n.relatedPostId) return `/post/${n.relatedPostId}`;
+  if (n.relatedUserUsername) return `/u/${n.relatedUserUsername}`;
+  if (n.relatedUserId) return `/u/${n.relatedUserId}`;
+  return "#";
+};
+
+const getInitials = (name) =>
+  (name || "")
+    .split(/\s+|_/)
+    .slice(0, 2)
+    .map((s) => s[0])
+    .join("")
+    .toUpperCase() || "?";
+
+/* -----------------------------
+   IntersectionObserver Hook
+-------------------------------*/
+function useInView(callback, options = { threshold: 0.6 }) {
+  const observerRef = useRef(null);
+  const cbRef = useRef(callback);
+
+  useEffect(() => {
+    cbRef.current = callback;
+  }, [callback]);
+
+  const setNode = useCallback(
+    (node) => {
+      if (observerRef.current) observerRef.current.disconnect();
+      if (!node) return;
+
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) cbRef.current?.(entry.target);
+        });
+      }, options);
+
+      observer.observe(node);
+      observerRef.current = observer;
+    },
+    [options]
+  );
+
+  return setNode;
+}
+
+/* -----------------------------
+   Page
+-------------------------------*/
 export default function NotificationsPage() {
   const { user } = useAuthStore();
   const {
@@ -79,15 +153,21 @@ export default function NotificationsPage() {
     bindSocket,
   } = useNotificationStore();
 
+  // Filters & search
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("ALL"); // ALL | UNREAD | REQUESTS | LIKES | COMMENTS | FOLLOWS | OTHER
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // initial fetch + socket
   useEffect(() => {
     fetchNotifications({ page: 1, limit: 20 });
     bindSocket();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadMore = async () => {
+  // Infinite scroll: sentinel
+  const sentinelRef = useRef(null);
+  const onReachBottom = useCallback(async () => {
     if (loadingMore) return;
     if (pagination.page >= pagination.pages) return;
     setLoadingMore(true);
@@ -96,23 +176,70 @@ export default function NotificationsPage() {
     } finally {
       setLoadingMore(false);
     }
+  }, [loadingMore, pagination, fetchNotifications]);
+
+  const setSentinel = useInView(() => onReachBottom(), { threshold: 0.1 });
+
+  useEffect(() => {
+    if (sentinelRef.current) setSentinel(sentinelRef.current);
+  }, [items.length, setSentinel]);
+
+  // Filter + search
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const f = (n) => {
+      const t = String(n.type || "").toUpperCase();
+      const matchesType =
+        typeFilter === "ALL" ||
+        (typeFilter === "UNREAD" && !n.read) ||
+        (typeFilter === "REQUESTS" && t === "FOLLOW_REQUEST") ||
+        (typeFilter === "LIKES" && t === "LIKE") ||
+        (typeFilter === "COMMENTS" && (t === "COMMENT" || t === "REPLY")) ||
+        (typeFilter === "FOLLOWS" && (t === "FOLLOW" || t === "FOLLOW_ACCEPTED")) ||
+        (typeFilter === "OTHER" &&
+          !["FOLLOW", "FOLLOW_REQUEST", "FOLLOW_ACCEPTED", "LIKE", "COMMENT", "REPLY"].includes(t));
+
+      if (!matchesType) return false;
+      if (!q) return true;
+
+      const hay =
+        `${n.message || ""} ${n.type || ""} ${n.relatedUserUsername || ""} ${n.relatedUserId || ""}`.toLowerCase();
+      return hay.includes(q);
+    };
+    return items.filter(f);
+  }, [items, query, typeFilter]);
+
+  // Group by day label
+  const grouped = useMemo(() => {
+    const map = new Map();
+    filtered.forEach((n) => {
+      const d = n.createdAt ? new Date(n.createdAt) : new Date();
+      const label = groupDateLabel(d);
+      if (!map.has(label)) map.set(label, []);
+      map.get(label).push(n);
+    });
+    // keep each group order (items are already newest-first)
+    return Array.from(map.entries());
+  }, [filtered]);
+
+  const onMarkAll = async () => {
+    await markAllRead();
   };
+
+  const hasMore = pagination.page < pagination.pages;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
       <div className="container mx-auto px-4 py-6 max-w-4xl">
-        {/* Header Section */}
-        <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+        {/* Header */}
+        <div className="mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="space-y-1">
               <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
                 Notifications
               </h1>
-              <p className="text-sm text-muted-foreground">
-                Stay updated with your latest activities
-              </p>
+              <p className="text-sm text-muted-foreground">Stay updated with your latest activities</p>
             </div>
-            
             <div className="flex items-center gap-2 flex-wrap">
               {unreadCount > 0 && (
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary border border-primary/20">
@@ -120,10 +247,10 @@ export default function NotificationsPage() {
                   <span className="text-sm font-medium">{unreadCount} new</span>
                 </div>
               )}
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={markAllRead} 
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onMarkAll}
                 disabled={unreadCount === 0}
                 className="hover:bg-primary/10 hover:text-primary hover:border-primary/30"
               >
@@ -136,7 +263,45 @@ export default function NotificationsPage() {
           </div>
         </div>
 
-        {/* Content Section */}
+        {/* Filters */}
+        <div className="mb-4 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2">
+            <Filter className="w-4 h-4 text-muted-foreground" />
+            {[
+              ["ALL", "All"],
+              ["UNREAD", "Unread"],
+              ["REQUESTS", "Requests"],
+              ["LIKES", "Likes"],
+              ["COMMENTS", "Comments"],
+              ["FOLLOWS", "Follows"],
+              ["OTHER", "Other"],
+            ].map(([key, label]) => {
+              const active = typeFilter === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setTypeFilter(key)}
+                  className={`px-3 py-1.5 text-xs rounded-full border transition ${
+                    active
+                      ? "bg-primary/10 text-primary border-primary/30"
+                      : "text-muted-foreground hover:bg-muted/50 border-transparent"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="w-full sm:w-64">
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search notifications…"
+            />
+          </div>
+        </div>
+
+        {/* Content */}
         <div className="space-y-6">
           {isLoading && items.length === 0 ? (
             <Card className="overflow-hidden">
@@ -156,9 +321,9 @@ export default function NotificationsPage() {
                   <p className="font-medium text-destructive">Something went wrong</p>
                   <p className="text-sm text-destructive/80">{error}</p>
                 </div>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() => fetchNotifications({ page: 1, limit: 20 })}
                   className="border-destructive/30 hover:bg-destructive/10"
                 >
@@ -166,7 +331,7 @@ export default function NotificationsPage() {
                 </Button>
               </div>
             </Card>
-          ) : items.length === 0 ? (
+          ) : filtered.length === 0 ? (
             <Card className="overflow-hidden">
               <div className="p-12 text-center space-y-4">
                 <div className="w-16 h-16 mx-auto rounded-full bg-muted/50 flex items-center justify-center">
@@ -175,45 +340,58 @@ export default function NotificationsPage() {
                 <div className="space-y-2">
                   <h3 className="font-medium text-foreground">All caught up!</h3>
                   <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                    You don't have any notifications yet. When you do, they'll appear here.
+                    No notifications match your filters.
                   </p>
                 </div>
               </div>
             </Card>
           ) : (
-            <Card className="overflow-hidden shadow-sm border-0 bg-card/50 backdrop-blur-sm">
-              <div className="divide-y divide-border/50">
-                {items.map((n, index) => (
-                  <NotificationRow 
-                    key={n.id} 
-                    n={n} 
-                    onSeen={() => markRead(n.id)}
-                    index={index}
-                  />
-                ))}
-              </div>
-            </Card>
+            grouped.map(([label, rows]) => (
+              <section key={label} aria-labelledby={`group-${label}`}>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground/80 mb-2">
+                  {label}
+                </div>
+                <Card className="overflow-hidden shadow-sm border-0 bg-card/50 backdrop-blur-sm">
+                  <div className="divide-y divide-border/50">
+                    {rows.map((n) => (
+                      <NotificationRow key={n.id} n={n} onSeen={() => markRead(n.id)} />
+                    ))}
+                  </div>
+                </Card>
+              </section>
+            ))
           )}
 
-          {/* Load More Section */}
-          {pagination.page < pagination.pages && (
-            <div className="flex justify-center py-4">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={loadMore} 
-                disabled={loadingMore}
-                className="hover:bg-primary/10 hover:text-primary hover:border-primary/30"
-              >
-                {loadingMore ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
-                    Loading…
-                  </>
-                ) : (
-                  "Load more"
-                )}
-              </Button>
+          {/* Infinite scroll sentinel + fallback button */}
+          {filtered.length > 0 && (
+            <div className="flex flex-col items-center py-4">
+              {hasMore && (
+                <div
+                  ref={(node) => {
+                    sentinelRef.current = node;
+                    setSentinel(node);
+                  }}
+                  className="h-6"
+                />
+              )}
+              {hasMore && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchNotifications({ page: pagination.page + 1, limit: pagination.limit })}
+                  disabled={loadingMore}
+                  className="hover:bg-primary/10 hover:text-primary hover:border-primary/30"
+                >
+                  {loadingMore ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin mr-2" />
+                      Loading…
+                    </>
+                  ) : (
+                    "Load more"
+                  )}
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -222,55 +400,68 @@ export default function NotificationsPage() {
   );
 }
 
-function NotificationRow({ n, onSeen, index }) {
+/* -----------------------------
+   Row
+-------------------------------*/
+function NotificationRow({ n, onSeen }) {
   const isFollowReq = String(n.type).toUpperCase() === "FOLLOW_REQUEST" && n.relatedUserId;
   const when = n.createdAt ? formatDistanceToNow(new Date(n.createdAt), { addSuffix: true }) : "";
 
-  // Prefer username route if backend enriched it; fallback to id; else "#"
-  const href = n.relatedPostId
-    ? `/post/${n.relatedPostId}`
-    : n.relatedUserUsername
-    ? `/u/${n.relatedUserUsername}`
-    : n.relatedUserId
-    ? `/u/${n.relatedUserId}`
-    : "#";
+  const href = buildHref(n);
 
-  // Enhanced visual states with better contrast
-  const rowClass = n.read 
-    ? "hover:bg-muted/30 opacity-75" 
+  // auto mark read when ~60% visible
+  const rowRef = useRef(null);
+  const setInView = useInView((node) => {
+    if (!n.read) onSeen?.();
+  }, { threshold: 0.6 });
+
+  useEffect(() => {
+    if (rowRef.current) setInView(rowRef.current);
+  }, [rowRef.current, setInView]);
+
+  const rowClass = n.read
+    ? "hover:bg-muted/30"
     : "bg-primary/5 hover:bg-primary/10 border-l-2 border-primary/30";
-  
-  const titleClass = n.read 
-    ? "text-muted-foreground" 
-    : "font-medium text-foreground";
-  
+
+  const titleClass = n.read ? "text-muted-foreground" : "font-medium text-foreground";
   const metaClass = "text-xs text-muted-foreground/80";
+
+  // Avatar: You could enrich related user avatar in backend later; safe fallback now
+  const actorName = n.relatedUserUsername || "Someone";
+  const avatarSrc = n.relatedUserAvatar || null;
 
   return (
     <div
+      ref={rowRef}
       className={`group relative p-4 sm:p-5 flex items-start sm:items-center gap-3 sm:gap-4 transition-all duration-200 ${rowClass}`}
-      onMouseEnter={onSeen}
-      style={{
-  animationName: "fadeInUp",
-  animationDuration: "0.4s",
-  animationTimingFunction: "ease-out",
-  animationFillMode: "forwards",
-  animationDelay: `${index * 50}ms`
-}}
+      role="article"
+      aria-live="polite"
     >
-      {/* Leading icon with enhanced styling */}
-      <div className={`relative shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-full border flex items-center justify-center transition-all duration-200 ${getTypeColor(n.type)} group-hover:scale-105`}>
+      {/* Leading icon */}
+      <div
+        className={`relative shrink-0 w-10 h-10 sm:w-11 sm:h-11 rounded-full border flex items-center justify-center transition-all duration-200 ${getTypeColor(
+          n.type
+        )} group-hover:scale-105`}
+        aria-hidden="true"
+      >
         {typeIcon(n.type)}
         {!n.read && (
           <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-primary border-2 border-background animate-pulse" />
         )}
       </div>
 
-      {/* Main content with better responsive layout */}
+      {/* Avatar + content */}
       <div className="flex-1 min-w-0 space-y-1">
-        <div className={`text-sm sm:text-base leading-relaxed ${titleClass}`}>
-          {n.message || prettyMessage(n)}
+        <div className="flex items-center gap-3 min-w-0">
+          <Avatar className="w-8 h-8">
+            <AvatarImage src={avatarSrc || ""} alt={actorName} />
+            <AvatarFallback>{getInitials(actorName)}</AvatarFallback>
+          </Avatar>
+          <div className={`text-sm sm:text-base leading-relaxed ${titleClass}`}>
+            {n.message || prettyMessage(n)}
+          </div>
         </div>
+
         <div className={`flex items-center gap-2 ${metaClass}`}>
           <span>{when}</span>
           {!n.read && (
@@ -281,15 +472,17 @@ function NotificationRow({ n, onSeen, index }) {
         </div>
       </div>
 
-      {/* Actions section with better mobile layout */}
-      <div className="shrink-0 flex items-center">
+      {/* Actions */}
+      <div className="shrink-0 flex items-center gap-2">
         {isFollowReq ? (
           <FollowRequestActions followerId={n.relatedUserId} />
         ) : (
-          <Link 
-            href={href} 
+          <Link
+            href={href}
             className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-medium bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+            aria-label="View"
           >
+            <Eye className="w-3.5 h-3.5" />
             View
           </Link>
         )}
@@ -298,19 +491,9 @@ function NotificationRow({ n, onSeen, index }) {
   );
 }
 
-function prettyMessage(n) {
-  const t = (n.type || "").toUpperCase();
-  if (t === "FOLLOW_REQUEST") return "sent you a follow request";
-  if (t === "FOLLOW_ACCEPTED") return "accepted your follow request";
-  if (t === "FOLLOW") return "started following you";
-  if (t === "LIKE") return "liked your post";
-  if (t === "COMMENT") return "commented on your post";
-  if (t === "REPLY") return "replied to your comment";
-  if (t === "GROUP_INVITE") return "invited you to join a group";
-  return "You have a new notification";
-}
-
-/** Enhanced Follow Request Actions with better mobile UX */
+/* -----------------------------
+   Follow Request Actions
+-------------------------------*/
 function FollowRequestActions({ followerId }) {
   const accept = useSocialStore((s) => s.acceptFollowRequest);
   const decline = useSocialStore((s) => s.declineFollowRequest);
@@ -322,9 +505,9 @@ function FollowRequestActions({ followerId }) {
     setBusy(true);
     try {
       await accept(followerId);
-      setResult('accepted');
+      setResult("accepted");
     } catch (error) {
-      console.error('Failed to accept follow request:', error);
+      console.error("Failed to accept follow request:", error);
     } finally {
       setBusy(false);
     }
@@ -335,9 +518,9 @@ function FollowRequestActions({ followerId }) {
     setBusy(true);
     try {
       await decline(followerId);
-      setResult('declined');
+      setResult("declined");
     } catch (error) {
-      console.error('Failed to decline follow request:', error);
+      console.error("Failed to decline follow request:", error);
     } finally {
       setBusy(false);
     }
@@ -346,7 +529,7 @@ function FollowRequestActions({ followerId }) {
   if (result) {
     return (
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        {result === 'accepted' ? (
+        {result === "accepted" ? (
           <div className="flex items-center gap-1 text-green-600">
             <CheckCircle2 className="w-3 h-3" />
             Accepted
@@ -363,9 +546,9 @@ function FollowRequestActions({ followerId }) {
 
   return (
     <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-      <Button 
-        size="sm" 
-        onClick={onAccept} 
+      <Button
+        size="sm"
+        onClick={onAccept}
         disabled={busy}
         className="bg-green-600 hover:bg-green-700 text-white border-0 shadow-sm min-w-[70px]"
       >
@@ -378,10 +561,10 @@ function FollowRequestActions({ followerId }) {
           </>
         )}
       </Button>
-      <Button 
-        size="sm" 
-        variant="outline" 
-        onClick={onDecline} 
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={onDecline}
         disabled={busy}
         className="border-gray-300 hover:bg-gray-50 hover:border-gray-400 min-w-[70px]"
       >
@@ -398,23 +581,17 @@ function FollowRequestActions({ followerId }) {
   );
 }
 
-// Add CSS for animations
+/* -----------------------------
+   Tiny CSS for subtle fade-in (optional)
+-------------------------------*/
 const styles = `
   @keyframes fadeInUp {
-    from {
-      opacity: 0;
-      transform: translateY(10px);
-    }
-    to {
-      opacity: 1;
-      transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 `;
-
-// Inject styles
-if (typeof document !== 'undefined') {
-  const styleSheet = document.createElement('style');
-  styleSheet.textContent = styles;
-  document.head.appendChild(styleSheet);
+if (typeof document !== "undefined") {
+  const style = document.createElement("style");
+  style.textContent = styles;
+  document.head.appendChild(style);
 }

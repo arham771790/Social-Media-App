@@ -14,6 +14,10 @@ export const usePostStore = create((set, get) => ({
   // byAuthor[authorId] = { items, page, limit, total, hasMore, isLoading, error }
   byAuthor: {},
 
+  // Bookmarks cache (for current user)
+  // bookmarks = { items, page, limit, total, hasMore, isLoading, error }
+  bookmarks: { items: [], page: 0, limit: 24, total: 0, hasMore: true, isLoading: false, error: null },
+
   /* ---------------------------
    * CREATE
    * ------------------------- */
@@ -118,7 +122,20 @@ export const usePostStore = create((set, get) => ({
       // 2) remove from all author lists
       get()._removeFromAuthorLists(id);
 
-      // 3) remove from feed if store provides it
+      // 3) also remove from bookmarks if present
+      set((s) => ({
+        bookmarks: {
+          ...s.bookmarks,
+          items: s.bookmarks.items.filter((p) => p.id !== id),
+          total: Math.max(
+            0,
+            s.bookmarks.total -
+              (s.bookmarks.items.some((p) => p.id === id) ? 1 : 0)
+          ),
+        },
+      }));
+
+      // 4) remove from feed if store provides it
       const fs = useFeedStore.getState();
       if (fs?.removeFromFeed) fs.removeFromFeed(id);
     } catch (err) {
@@ -160,17 +177,43 @@ export const usePostStore = create((set, get) => ({
 
   toggleBookmark: async (id) => {
     try {
-      const { data } = await api.post(`/posts/${id}/bookmark`);
+      const { data } = await api.post(`/posts/${id}/bookmark`); // { isBookmarked: boolean }
+
+      // update single & current
       set((s) => ({
         byId: { ...s.byId, [id]: { ...s.byId[id], isBookmarked: data.isBookmarked } },
         current:
           s.current?.id === id ? { ...s.current, isBookmarked: data.isBookmarked } : s.current,
       }));
 
+      // feed
       const fs = useFeedStore.getState();
       if (fs?.patchFeedItem) fs.patchFeedItem(id, { isBookmarked: data.isBookmarked });
 
+      // author lists
       get()._patchInAuthorLists(id, { isBookmarked: data.isBookmarked });
+
+      // sync bookmarks cache
+      const s = get();
+      const exists = s.bookmarks.items.some((p) => p.id === id);
+      let nextItems = s.bookmarks.items;
+
+      if (data.isBookmarked && !exists) {
+        const full = s.byId[id] || fs?.getItem?.(id) || null;
+        if (full) nextItems = [full, ...s.bookmarks.items];
+      } else if (!data.isBookmarked && exists) {
+        nextItems = s.bookmarks.items.filter((p) => p.id !== id);
+      }
+
+      set({
+        bookmarks: {
+          ...s.bookmarks,
+          items: nextItems,
+          total: data.isBookmarked
+            ? s.bookmarks.total + (exists ? 0 : 1)
+            : Math.max(0, s.bookmarks.total - (exists ? 1 : 0)),
+        },
+      });
 
       return data;
     } catch (err) {
@@ -181,6 +224,7 @@ export const usePostStore = create((set, get) => ({
   replyToPost: async (id, payload) => {
     try {
       const { data } = await api.post(`/posts/${id}/reply`, payload);
+    /* optional: update comments count in caches here if your API returns it */
       return data;
     } catch (err) {
       throw new Error(err?.response?.data?.error || "Failed to reply");
@@ -270,6 +314,57 @@ export const usePostStore = create((set, get) => ({
   },
 
   /* ---------------------------
+   * Bookmarks (paginated)
+   * ------------------------- */
+  fetchBookmarks: async ({ page = 1, limit = 24 } = {}) => {
+    const s = get();
+    if (page !== 1 && !s.bookmarks.hasMore) return s.bookmarks;
+
+    set({
+      bookmarks: { ...s.bookmarks, isLoading: true, error: null, limit },
+    });
+
+    // Try likely endpoints
+    let data;
+    try {
+      const r1 = await api.get(`/posts/bookmarks`, { params: { page, limit } });
+      data = r1.data;
+    } catch {
+      const r2 = await api.get(`/bookmarks`, { params: { page, limit } });
+      data = r2.data;
+    }
+
+    const posts = data.items || data.posts || data || [];
+    const pages =
+      data.pagination?.pages ??
+      (data.total && limit ? Math.ceil(data.total / limit) : 1);
+    const hasMore = page < pages;
+
+    // keep single cache fresh
+    const nextById = { ...get().byId };
+    posts.forEach((p) => {
+      if (p?.id) nextById[p.id] = p;
+    });
+
+    set((prev) => ({
+      byId: nextById,
+      bookmarks: {
+        items: page === 1 ? posts : [...prev.bookmarks.items, ...posts],
+        page,
+        limit,
+        total:
+          data.pagination?.total ??
+          (page === 1 ? posts.length : prev.bookmarks.total),
+        hasMore,
+        isLoading: false,
+        error: null,
+      },
+    }));
+
+    return get().bookmarks;
+  },
+
+  /* ---------------------------
    * Helpers for keeping lists in sync
    * ------------------------- */
   _patchInAuthorLists: (postId, patch) => {
@@ -292,6 +387,17 @@ export const usePostStore = create((set, get) => ({
       }
     });
     set({ byAuthor });
+
+    // Also patch in bookmarks if present
+    const bk = s.bookmarks;
+    if (bk?.items?.length) {
+      const i = bk.items.findIndex((p) => p.id === postId);
+      if (i >= 0) {
+        const next = [...bk.items];
+        next[i] = { ...next[i], ...patch };
+        set({ bookmarks: { ...bk, items: next } });
+      }
+    }
   },
 
   _replaceInAuthorLists: (post) => {
@@ -314,6 +420,17 @@ export const usePostStore = create((set, get) => ({
       }
     });
     set({ byAuthor });
+
+    // Replace in bookmarks too if present
+    const bk = s.bookmarks;
+    if (bk?.items?.length) {
+      const i = bk.items.findIndex((p) => p.id === post.id);
+      if (i >= 0) {
+        const next = [...bk.items];
+        next[i] = { ...next[i], ...post };
+        set({ bookmarks: { ...bk, items: next } });
+      }
+    }
   },
 
   _removeFromAuthorLists: (postId) => {

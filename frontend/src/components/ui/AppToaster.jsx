@@ -18,7 +18,7 @@ export default function AppToaster() {
         <div
           key={t.id}
           className={[
-            "rounded-lg border p-3 shadow-lg backdrop-blur bg-gray-900/80 border-gray-800 text-white",
+            "rounded-lg border p-3 shadow-lg backdrop-blur bg-grayt-900/80 border-gray-800 text-white",
             t.variant === "destructive" ? "border-red-600/60 bg-red-950/70" : "",
           ].join(" ")}
           role="status"

@@ -29,7 +29,7 @@ export default function RootLayout({ children }) {
       >
         {children}
          <AppToaster position="top-right"/>
-         <Toast position="top-left"/>
+        
           <CallPanelHost/>
           <IncomingCallCenter/>
       </body>

@@ -1,398 +1,414 @@
-// src/app/u/[username]/page.jsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Card, CardContent } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import api from "@/lib/axios";
 import { useAuthStore } from "@/store/authStore";
-import { useUserStore } from "@/store/userStore";
 import { useSocialStore } from "@/store/socialStore";
 import { usePostStore } from "@/store/postStore";
-import SocialListDialog from "@/components/social/SocialListDialog";
 
-/** Tiny inline spinner for buttons / subtle loads */
-function Spinner({ className = "w-4 h-4" }) {
-  return (
-    <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" aria-hidden="true">
-      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-      />
-    </svg>
-  );
+/** derive normalized flags if backend doesn't send them */
+function deriveCanViewContent(profile, currentUserId) {
+  if (!profile) return false;
+  const isMe = profile.id === currentUserId;
+  const isPublic = !!profile.isPublic;
+  const followStatus = profile.followStatus || (profile.isFollowing ? "ACCEPTED" : "NONE");
+  if (typeof profile.canViewContent === "boolean") return profile.canViewContent;
+  return isMe || isPublic || followStatus === "ACCEPTED";
+}
+function normalizeFollowStatus(profile) {
+  if (profile.followStatus) return profile.followStatus;
+  if (profile.isFollowing) return "ACCEPTED";
+  if (profile.isRequested) return "PENDING";
+  return "NONE";
 }
 
-export default function UserProfilePage() {
+export default function ProfilePage() {
   const { username } = useParams();
+  const router = useRouter();
+  const { user: currentUser } = useAuthStore();
 
-  // Stores
-  const { user: me } = useAuthStore();
+  const { followUser, unfollowUser, getFollowers, getFollowing, followersByUser, followingByUser } =
+    useSocialStore();
 
-  const {
-    searchUsers,
-    fetchUserById,
-    selectedUser,
-    isLoading: userLoading,
-  } = useUserStore();
+  const { fetchByAuthor, byAuthor, resetAuthorList } = usePostStore();
 
-  const {
-    getFollowers,
-    getFollowing,
-    followersByUser,
-    followingByUser,
-    followUser,
-    unfollowUser,
-    followPending,          // { [userId]: true } while a follow/unfollow request in flight
-    relationshipByUser,     // OPTIONAL: { [userId]: "FOLLOWING"|"REQUESTED"|"NONE" } if your store exposes it
-  } = useSocialStore();
+  const [profile, setProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  const { byAuthor, fetchByAuthor } = usePostStore();
-
-  // Local UI state
-  const [pageLoading, setPageLoading] = useState(true);
-  const [pageError, setPageError] = useState(null);
-  const [userId, setUserId] = useState(null);
-
+  // dialogs
   const [followersOpen, setFollowersOpen] = useState(false);
   const [followingOpen, setFollowingOpen] = useState(false);
-  const [confirmUnfollow, setConfirmUnfollow] = useState(false);
 
-  // Resolve username -> id and hydrate page via STORES ONLY
+  const isMe = profile?.id && profile.id === currentUser?.id;
+
+  const headerCounts = {
+    posts: profile?._count?.posts ?? 0,
+    followers: profile?._count?.followers ?? 0,
+    following: profile?._count?.following ?? 0,
+  };
+
+  // Make UI text resilient to backend fields
+  const followStatus = useMemo(() => normalizeFollowStatus(profile || {}), [profile]);
+  const followButtonText = useMemo(() => {
+    if (followStatus === "ACCEPTED") return "Following";
+    if (followStatus === "PENDING") return "Requested";
+    return "Follow";
+  }, [followStatus]);
+
+  const canViewContent = deriveCanViewContent(profile, currentUser?.id);
+
+  // Posts from store bucket
+  const authorBucket = profile?.id ? byAuthor[String(profile.id)] : null;
+  const posts = authorBucket?.items || [];
+  const postsLoading = authorBucket?.isLoading;
+
+  // followers/following buckets
+  const followersBucket = profile?.id ? followersByUser[profile.id] : null;
+  const followingBucket = profile?.id ? followingByUser[profile.id] : null;
+
+  // load profile, then posts via store if allowed
   useEffect(() => {
-    let cancelled = false;
-
+    if (!username) return;
     (async () => {
-      setPageLoading(true);
-      setPageError(null);
-      setUserId(null);
-
       try {
-        const s = await searchUsers({ q: String(username), page: 1, limit: 1 });
-        const match = (s?.users || [])[0];
-        if (!match) {
-          if (!cancelled) {
-            setPageError("User not found");
-            setPageLoading(false);
-          }
-          return;
+        setLoading(true);
+        const res = await api.get(`/users/username/${username}`);
+        const data = res.data || {};
+        const normalized = { ...data, followStatus: normalizeFollowStatus(data) };
+        normalized.canViewContent = deriveCanViewContent(normalized, currentUser?.id);
+        setProfile(normalized);
+
+        if (normalized.canViewContent && normalized.id) {
+          await fetchByAuthor(normalized.id, { page: 1, limit: 24 });
+        } else if (normalized.id) {
+          resetAuthorList(normalized.id);
         }
-
-        const id = match.id;
-        setUserId(id);
-
-        // kick off parallel store fetches
-        await Promise.allSettled([
-          fetchUserById(id),
-          getFollowers(id, { page: 1, limit: 1 }), // just to get totals quickly
-          getFollowing(id, { page: 1, limit: 1 }),
-          fetchByAuthor(id, { page: 1, limit: 24 }),
-          me?.id ? getFollowing(me.id, { page: 1, limit: 100 }) : Promise.resolve(),
-        ]);
-
-        if (!cancelled) setPageLoading(false);
-      } catch (e) {
-        if (!cancelled) {
-          setPageError("Failed to load profile");
-          setPageLoading(false);
-        }
+      } catch (err) {
+        setError("User profile not found");
+      } finally {
+        setLoading(false);
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [username, me?.id]);
+  }, [username, currentUser?.id]);
 
-  const profile = userId && selectedUser?.id === userId ? selectedUser : null;
-
-  // Posts bucket for this user
-  const postsBucket = userId ? byAuthor[userId] : null;
-  const posts = postsBucket?.items || [];
-  const postsTotal =
-    postsBucket?.pagination?.total ??
-    profile?._count?.posts ??
-    posts.length;
-
-  // Totals from social store (fallback to profile._count if present)
-  const followersTotal =
-    (userId && followersByUser[userId]?.pagination?.total) ??
-    profile?._count?.followers ??
-    0;
-
-  const followingTotal =
-    (userId && followingByUser[userId]?.pagination?.total) ??
-    profile?._count?.following ??
-    0;
-
-  const isMe = !!(me?.id && userId && me.id === userId);
-
-  // Relationship state:
-  // 1) Prefer store relationship map if available (FOLLOWING/REQUESTED/NONE)
-  // 2) Fallback to computing from my following list (legacy path)
-  const relFromMap = relationshipByUser?.[String(userId)];
-  const iFollow = useMemo(() => {
-    if (relFromMap) return relFromMap === "FOLLOWING";
-    if (!me?.id || !userId) return false;
-    const myFollowing = followingByUser[String(me.id)]?.items || [];
-    const set = new Set(myFollowing.map((u) => u.id));
-    return set.has(userId);
-  }, [relFromMap, me?.id, userId, followingByUser]);
-
-  const requested = useMemo(() => {
-    if (relFromMap) return relFromMap === "REQUESTED";
-    // Heuristic: if profile is private & not following & I recently pressed follow (pending)
-    return !!followPending[String(userId)] && profile?.isPublic === false && !iFollow;
-  }, [relFromMap, userId, followPending, profile?.isPublic, iFollow]);
-
-  const busy = !!followPending[String(userId)];
-
-  const onFollow = async () => {
-    if (!userId || busy) return;
+  const handleFollow = async () => {
+    if (!profile) return;
     try {
-      await followUser(userId);
-      // refresh my following + their followers count caches
-      if (me?.id) getFollowing(me.id, { page: 1, limit: 100 }).catch(() => {});
-      getFollowers(userId, { page: 1, limit: 1 }).catch(() => {});
-    } catch (e) {
-      // swallow; store should handle error state
+      setActionLoading(true);
+
+      if (followStatus === "ACCEPTED") {
+        // Unfollow
+        await unfollowUser(profile.id);
+        setProfile((p) => {
+          const stillVisible = p?.isPublic || p?.id === currentUser?.id;
+          return { ...p, followStatus: "NONE", canViewContent: stillVisible };
+        });
+        if (!(profile.isPublic || isMe)) {
+          resetAuthorList(profile.id);
+        }
+        return;
+      }
+
+      if (followStatus === "PENDING") return; // already requested
+
+      // NONE or DECLINED → try to follow
+      const res = await followUser(profile.id); // { status: 'ACCEPTED'|'PENDING' }
+      const nextStatus = res?.status || "PENDING";
+
+      setProfile((p) => {
+        const nextCanView =
+          nextStatus === "ACCEPTED" ? true : p?.isPublic ? true : p?.id === currentUser?.id;
+        return { ...p, followStatus: nextStatus, canViewContent: nextCanView };
+      });
+
+      if (nextStatus === "ACCEPTED") {
+        await fetchByAuthor(profile.id, { page: 1, limit: 24 });
+      }
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const onConfirmUnfollow = async () => {
-    setConfirmUnfollow(false);
-    if (!userId || busy) return;
-    try {
-      await unfollowUser(userId);
-      if (me?.id) getFollowing(me.id, { page: 1, limit: 100 }).catch(() => {});
-      getFollowers(userId, { page: 1, limit: 1 }).catch(() => {});
-    } catch (e) {}
+  // open followers/following dialogs only if viewer can see them (public/self/accepted)
+  const canSeeLists = canViewContent; // backend gates lists with same rule
+  const openFollowers = async () => {
+    if (!canSeeLists || !profile?.id) return;
+    await getFollowers(profile.id, { page: 1, limit: 20 });
+    setFollowersOpen(true);
+  };
+  const openFollowing = async () => {
+    if (!canSeeLists || !profile?.id) return;
+    await getFollowing(profile.id, { page: 1, limit: 20 });
+    setFollowingOpen(true);
   };
 
-  // Loading & error states
-  if (pageLoading || userLoading) {
+  const loadMoreFollowers = async () => {
+    if (!profile?.id) return;
+    const page = (followersBucket?.page || 1) + 1;
+    const limit = followersBucket?.limit || 20;
+    const total = followersBucket?.total || 0;
+    const loaded = followersBucket?.items?.length || 0;
+    if (loaded >= total) return;
+    await getFollowers(profile.id, { page, limit });
+  };
+
+  const loadMoreFollowing = async () => {
+    if (!profile?.id) return;
+    const page = (followingBucket?.page || 1) + 1;
+    const limit = followingBucket?.limit || 20;
+    const total = followingBucket?.total || 0;
+    const loaded = followingBucket?.items?.length || 0;
+    if (loaded >= total) return;
+    await getFollowing(profile.id, { page, limit });
+  };
+
+  // click post → go to post page (adjust route to your app if different)
+  const goToPost = (postId) => router.push(`/post/${postId}`);
+
+  if (loading) {
     return (
-      <div className="max-w-3xl mx-auto p-4 space-y-6" aria-busy="true">
-        <div className="flex items-center gap-4">
-          <Skeleton className="w-20 h-20 rounded-full" />
-          <div className="space-y-2">
-            <Skeleton className="w-40 h-5" />
-            <Skeleton className="w-24 h-4" />
+      <div className="max-w-2xl mx-auto p-6">
+        <div className="flex items-center space-x-4">
+          <Skeleton className="h-20 w-20 rounded-full" />
+          <div className="flex-1 space-y-2">
+            <Skeleton className="h-6 w-40" />
+            <Skeleton className="h-4 w-28" />
           </div>
         </div>
-        <Skeleton className="w-full h-8" />
-        <div className="grid grid-cols-3 gap-2">
-          {Array.from({ length: 9 }).map((_, i) => (
-            <Skeleton key={i} className="w-full h-36" />
+        <div className="grid grid-cols-3 gap-4 mt-6">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-40 w-full" />
           ))}
         </div>
       </div>
     );
   }
 
-  if (pageError || !profile) {
+  if (error || !profile) {
     return (
-      <div className="max-w-2xl mx-auto p-8 text-center">
-        <h2 className="text-xl font-semibold mb-2">User not found</h2>
-        <p className="text-muted-foreground">We couldn’t find @{username}.</p>
-        <div className="mt-4">
-          <Link href="/explore">
-            <Button>Explore</Button>
-          </Link>
-        </div>
+      <div className="flex flex-col items-center justify-center py-20">
+        <p className="text-lg font-semibold">{error || "User not found"}</p>
       </div>
     );
   }
 
-  const loadMorePosts = () => {
-    if (!postsBucket) return;
-    fetchByAuthor(userId, {
-      page: (postsBucket.pagination?.page || 1) + 1,
-      limit: postsBucket.pagination?.limit || 24,
-    }).catch(() => {});
-  };
+  const followersHasMore =
+    (followersBucket?.items?.length || 0) < (followersBucket?.total || 0);
+  const followingHasMore =
+    (followingBucket?.items?.length || 0) < (followingBucket?.total || 0);
 
   return (
-    <div className="max-w-3xl mx-auto p-4 space-y-6">
+    <div className="max-w-3xl mx-auto p-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <div className="relative w-20 h-20 rounded-full overflow-hidden bg-muted">
-          {profile.avatar ? (
-            <Image src={profile.avatar} alt={profile.username} fill className="object-cover" />
-          ) : (
-            <div className="w-full h-full grid place-items-center text-xl">
-              {profile.username?.[0]?.toUpperCase() || "U"}
-            </div>
-          )}
-        </div>
-
+      <div className="flex items-center space-x-6">
+        <Image
+          src={profile.avatar || "/default-avatar.png"}
+          alt={profile.username}
+          width={80}
+          height={80}
+          className="rounded-full object-cover"
+        />
         <div className="flex-1">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-xl font-semibold">@{profile.username}</h1>
+          <h2 className="text-2xl font-semibold">{profile.username}</h2>
+          <p className="text-muted-foreground">{profile.bio || ""}</p>
 
-            {isMe ? (
-              <Button size="sm" variant="secondary" asChild title="Edit profile">
-                <Link href="/me">Edit profile</Link>
-              </Button>
-            ) : iFollow ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => setConfirmUnfollow(true)}
-                disabled={busy}
-                title="You are following this user"
-              >
-                {busy ? <><Spinner className="w-4 h-4 mr-2" /> Updating…</> : "Following"}
-              </Button>
-            ) : requested ? (
-              <Button size="sm" variant="secondary" disabled title="Follow request sent">
-                Requested
-              </Button>
+          <div className="flex space-x-6 mt-2">
+            <span>
+              <strong>{headerCounts.posts}</strong> posts
+            </span>
+            {canSeeLists ? (
+              <>
+                <button
+                  className="text-left hover:underline"
+                  onClick={openFollowers}
+                  type="button"
+                >
+                  <strong>{headerCounts.followers}</strong> followers
+                </button>
+                <button
+                  className="text-left hover:underline"
+                  onClick={openFollowing}
+                  type="button"
+                >
+                  <strong>{headerCounts.following}</strong> following
+                </button>
+              </>
             ) : (
-              <Button
-                size="sm"
-                onClick={onFollow}
-                disabled={busy}
-                title={profile.isPublic ? "Follow user" : "Request to follow (private account)"}
-              >
-                {busy ? <><Spinner className="w-4 h-4 mr-2" /> Following…</> : "Follow"}
-              </Button>
+              <>
+                <span>
+                  <strong>{headerCounts.followers}</strong> followers
+                </span>
+                <span>
+                  <strong>{headerCounts.following}</strong> following
+                </span>
+              </>
             )}
           </div>
 
-          <p className="text-muted-foreground text-sm mt-1">
-            {profile.bio || "No bio yet."}
-          </p>
-
-          {/* Stats (clickable) */}
-          <div className="flex gap-6 mt-2 text-sm">
-            <span>
-              <strong>{postsTotal}</strong> posts
-            </span>
-
-            <button
-              type="button"
-              className="hover:underline"
-              onClick={() => setFollowersOpen(true)}
-              title="View followers"
-            >
-              <strong>{followersTotal}</strong> followers
-            </button>
-
-            <button
-              type="button"
-              className="hover:underline"
-              onClick={() => setFollowingOpen(true)}
-              title="View following"
-            >
-              <strong>{followingTotal}</strong> following
-            </button>
+          <div className="flex space-x-2 mt-3">
+            {isMe ? (
+              <Button onClick={() => router.push("/settings/profile")}>Edit Profile</Button>
+            ) : (
+              <>
+                <Button variant="default" disabled={actionLoading} onClick={handleFollow}>
+                  {followButtonText}
+                </Button>
+                {followStatus === "ACCEPTED" && (
+                  <Button variant="outline" onClick={() => router.push(`/messages/${profile.id}`)}>
+                    Message
+                  </Button>
+                )}
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Posts grid */}
-      <div>
-        <h2 className="text-lg font-semibold mb-3">Posts</h2>
-        {posts.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No posts yet.</p>
+      {/* Content */}
+      <div className="mt-8">
+        {canViewContent ? (
+          postsLoading ? (
+            <div className="grid grid-cols-3 gap-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-40 w-full" />
+              ))}
+            </div>
+          ) : posts.length > 0 ? (
+            <div className="grid grid-cols-3 gap-4">
+              {posts.map((post) => (
+                <Card
+                  key={post.id}
+                  className="overflow-hidden hover:opacity-90 transition cursor-pointer"
+                  onClick={() => goToPost(post.id)} // ← open the post page
+                >
+                  <CardContent className="p-0">
+                    <Image
+                      src={post.mediaUrl || "/placeholder.png"}
+                      alt="Post"
+                      width={400}
+                      height={400}
+                      className="w-full h-40 object-cover"
+                    />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="flex justify-center items-center py-20">
+              <p className="text-muted-foreground">No posts yet</p>
+            </div>
+          )
         ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {posts.map((p) => (
-              <Link
-                key={p.id}
-                href={`/post/${p.id}`}
-                className="relative w-full aspect-square bg-muted overflow-hidden"
-                title={p.title || "View post"}
-              >
-                {p.type === "VIDEO" ||
-                /\.(mp4|mov|webm|mkv|ogg)(\?|$)/i.test(p.mediaUrl || "") ? (
-                  <video
-                    src={p.mediaUrl}
-                    className="w-full h-full object-cover"
-                    muted
-                    playsInline
-                  />
-                ) : (
-                  <img
-                    src={p.thumbnailUrl || p.mediaUrl}
-                    alt={p.title || "Post"}
-                    className="w-full h-full object-cover"
-                    onError={(e) => {
-                      e.currentTarget.src =
-                        "https://via.placeholder.com/400x400/111827/6B7280?text=No+Image";
-                    }}
-                  />
-                )}
-              </Link>
-            ))}
-          </div>
-        )}
-
-        {postsBucket?.hasMore && (
-          <div className="text-center mt-6">
-            <Button
-              variant="outline"
-              onClick={loadMorePosts}
-              disabled={!!postsBucket?.isLoading}
-              aria-busy={!!postsBucket?.isLoading}
-            >
-              {postsBucket?.isLoading ? (
-                <>
-                  <Spinner className="w-4 h-4 mr-2" />
-                  Loading…
-                </>
-              ) : (
-                "Load more"
-              )}
-            </Button>
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <p className="text-lg font-semibold">This account is private</p>
+            <p className="text-sm text-muted-foreground">Follow to see their posts and updates.</p>
           </div>
         )}
       </div>
 
-      {/* Followers / Following dialogs */}
-      {!!userId && (
-        <>
-          <SocialListDialog
-            userId={userId}
-            mode="followers"
-            open={followersOpen}
-            onOpenChange={setFollowersOpen}
-            title={`Followers of @${profile.username}`}
-          />
-          <SocialListDialog
-            userId={userId}
-            mode="following"
-            open={followingOpen}
-            onOpenChange={setFollowingOpen}
-            title={`@${profile.username} is following`}
-          />
-        </>
-      )}
+      {/* Followers Dialog */}
+      <Dialog open={followersOpen} onOpenChange={setFollowersOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Followers</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh] pr-3">
+            <ul className="divide-y">
+              {(followersBucket?.items || []).map((u) => (
+                <li
+                  key={u.id}
+                  className="flex items-center justify-between py-3"
+                  onClick={() => router.push(`/u/${u.username}`)}
+                >
+                  <div className="flex items-center gap-3 cursor-pointer">
+                    <Image
+                      src={u.avatar || "/default-avatar.png"}
+                      alt={u.username}
+                      width={36}
+                      height={36}
+                      className="rounded-full object-cover"
+                    />
+                    <div className="flex flex-col">
+                      <span className="font-medium">{u.username}</span>
+                      {u.bio && (
+                        <span className="text-xs text-muted-foreground line-clamp-1">
+                          {u.bio}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {followersHasMore && (
+              <div className="flex justify-center mt-3">
+                <Button size="sm" variant="outline" onClick={loadMoreFollowers}>
+                  Load more
+                </Button>
+              </div>
+            )}
+            {!followersBucket?.items?.length && (
+              <div className="text-center py-6 text-muted-foreground">No followers yet</div>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
 
-      {/* Unfollow confirm dialog */}
-      <Dialog open={confirmUnfollow} onOpenChange={setConfirmUnfollow}>
-        <DialogContent className="max-w-sm">
-          <div className="space-y-3">
-            <h3 className="text-lg font-semibold">Unfollow @{profile.username}?</h3>
-            <p className="text-sm text-muted-foreground">
-              You’ll stop seeing their posts in your feed.
-            </p>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setConfirmUnfollow(false)}>
-                Cancel
-              </Button>
-              <Button variant="destructive" onClick={onConfirmUnfollow} disabled={busy}>
-                {busy ? <><Spinner className="w-4 h-4 mr-2" /> Unfollowing…</> : "Unfollow"}
-              </Button>
-            </div>
-          </div>
+      {/* Following Dialog */}
+      <Dialog open={followingOpen} onOpenChange={setFollowingOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Following</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh] pr-3">
+            <ul className="divide-y">
+              {(followingBucket?.items || []).map((u) => (
+                <li
+                  key={u.id}
+                  className="flex items-center justify-between py-3"
+                  onClick={() => router.push(`/u/${u.username}`)}
+                >
+                  <div className="flex items-center gap-3 cursor-pointer">
+                    <Image
+                      src={u.avatar || "/default-avatar.png"}
+                      alt={u.username}
+                      width={36}
+                      height={36}
+                      className="rounded-full object-cover"
+                    />
+                    <div className="flex flex-col">
+                      <span className="font-medium">{u.username}</span>
+                      {u.bio && (
+                        <span className="text-xs text-muted-foreground line-clamp-1">
+                          {u.bio}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {followingHasMore && (
+              <div className="flex justify-center mt-3">
+                <Button size="sm" variant="outline" onClick={loadMoreFollowing}>
+                  Load more
+                </Button>
+              </div>
+            )}
+            {!followingBucket?.items?.length && (
+              <div className="text-center py-6 text-muted-foreground">Not following anyone yet</div>
+            )}
+          </ScrollArea>
         </DialogContent>
       </Dialog>
     </div>

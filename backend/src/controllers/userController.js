@@ -8,6 +8,17 @@ const updateSchema = z.object({
   bio: z.string().max(256).optional(),
   isPublic: z.boolean().optional()
 });
+async function canViewPrivateContent(targetUserId, viewerId) {
+  if (!viewerId) return false;
+  if (viewerId === targetUserId) return true;
+
+  const rel = await prisma.follow.findUnique({
+    where: { followerId_followingId: { followerId: viewerId, followingId: targetUserId } },
+    select: { status: true },
+  });
+  return rel?.status === "ACCEPTED";
+}
+
 
 /**
  * Get current logged-in user's profile
@@ -73,61 +84,63 @@ export const updateProfile = async (req, res) => {
  * Get any user's public profile by ID
  * @route GET /users/:id
  */
-export const getUserProfile = async (req, res) => {
-  const { id } = req.params;
-  const currentUserId = req.userId; // Optional, for follow status
+ export const getUserProfile = async (req, res) => {
+   const { id } = req.params;
+   const currentUserId = req.userId;
 
-  // Find user by ID
-  const user = await prisma.user.findUnique({
-    where: { id },
-    select: { 
-      id: true, 
-      username: true, 
-      avatar: true, 
-      bio: true, 
-      isPublic: true,
-      settings: {
-        select: {
-          showActivityStatus: true,
-          privacyLastSeen: true
-        }
-      },
-      _count: {
-        select: {
-          followers: true,
-          following: true,
-          posts: true
-        }
-      }
-    }
-  });
-  
-  // Profile must be public
-  if (!user || !user.isPublic)
-    return res.status(StatusCodes.NOT_FOUND).json({ error: "Profile not found or is private" });
+   const user = await prisma.user.findUnique({
+     where: { id },
+     select: { 
+       id: true, 
+       username: true, 
+       avatar: true, 
+       bio: true, 
+       isPublic: true,
+       settings: {
+         select: {
+           showActivityStatus: true,
+           privacyLastSeen: true
+         }
+       },
+       _count: {
+         select: {
+           followers: true,
+           following: true,
+           posts: true
+         }
+       }
+     }
+   });
+   if (!user) {
+     return res.status(StatusCodes.NOT_FOUND).json({ error: "Profile not found" });
+   }
 
-  // Get follow status if user is logged in
-  let followStatus = null;
-  if (currentUserId && currentUserId !== id) {
-    const follow = await prisma.follow.findFirst({
-      where: {
-        followerId: currentUserId,
-        followingId: id
-      }
+  // Insta-style: header + counts are visible even if private
+  // Content (posts, followers/following lists) visibility is separate
+  const allowed = user.isPublic || await canViewPrivateContent(user.id, currentUserId);
+
+   // follow status for viewer
+  let followStatus = "NONE";
+   if (currentUserId && currentUserId !== id) {
+    const follow = await prisma.follow.findUnique({
+      where: { followerId_followingId: { followerId: currentUserId, followingId: id } },
+      select: { status: true },
     });
-    followStatus = follow ? 'following' : 'not_following';
-  }
+    followStatus = follow?.status || "NONE"; // NONE | PENDING | ACCEPTED | DECLINED
+   }
 
-  // Get online status (simplified - in real app, use Redis/socket for real-time status)
-  const isOnline = user.settings?.showActivityStatus ? true : false;
+   const isOnline = !!user.settings?.showActivityStatus;
 
-  res.status(StatusCodes.OK).json({
-    ...user,
-    followStatus,
-    isOnline,
-    lastSeen: user.settings?.privacyLastSeen ? new Date() : null
-  });
-};
+   res.status(StatusCodes.OK).json({
+     ...user,
+     followStatus,
+     isOnline,
+     lastSeen: user.settings?.privacyLastSeen ? new Date() : null,
+    // Frontend can use this to decide whether to load posts/lists
+    canViewContent: allowed
+   });
+ };
+
 
 /**
  * Follow a user
@@ -377,8 +390,8 @@ export const getFollowing = async (req, res) => {
 };
 
 /**
- * Search users
- * @route GET /users/search
+ * GET /users/search?q=...&page=&limit=
+ * Includes private users like Instagram; marks isPublic and followStatus.
  */
 export const searchUsers = async (req, res) => {
   try {
@@ -389,19 +402,18 @@ export const searchUsers = async (req, res) => {
       return res.status(StatusCodes.BAD_REQUEST).json({ error: "Search query is required" });
     }
 
-    const skip = (page - 1) * limit;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
 
     const users = await prisma.user.findMany({
       where: {
         AND: [
-          { isPublic: true },
           {
             OR: [
-              { username: { contains: q, mode: 'insensitive' } },
-              { bio: { contains: q, mode: 'insensitive' } }
-            ]
-          }
-        ]
+              { username: { contains: q, mode: "insensitive" } },
+              { bio: { contains: q, mode: "insensitive" } },
+            ],
+          },
+        ],
       },
       skip: parseInt(skip),
       take: parseInt(limit),
@@ -410,42 +422,30 @@ export const searchUsers = async (req, res) => {
         username: true,
         avatar: true,
         bio: true,
-        settings: {
-          select: {
-            showActivityStatus: true,
-            privacyLastSeen: true
-          }
-        },
-        _count: {
-          select: {
-            followers: true,
-            following: true,
-            posts: true
-          }
-        }
+        isPublic: true,
+        settings: { select: { showActivityStatus: true, privacyLastSeen: true } },
+        _count: { select: { followers: true, following: true, posts: true } },
       },
-      orderBy: { username: 'asc' }
+      orderBy: { username: "asc" },
     });
 
-    // Add follow status for current user
     const usersWithStatus = await Promise.all(
       users.map(async (user) => {
-        let followStatus = null;
+        let followStatus = "NONE";
         if (currentUserId && currentUserId !== user.id) {
-          const follow = await prisma.follow.findFirst({
+          const follow = await prisma.follow.findUnique({
             where: {
-              followerId: currentUserId,
-              followingId: user.id
-            }
+              followerId_followingId: { followerId: currentUserId, followingId: user.id },
+            },
+            select: { status: true },
           });
-          followStatus = follow ? 'following' : 'not_following';
+          followStatus = follow?.status || "NONE";
         }
-
         return {
           ...user,
           followStatus,
-          isOnline: user.settings?.showActivityStatus ? true : false,
-          lastSeen: user.settings?.privacyLastSeen ? new Date() : null
+          isOnline: !!user.settings?.showActivityStatus,
+          lastSeen: user.settings?.privacyLastSeen ? new Date() : null,
         };
       })
     );
@@ -453,28 +453,72 @@ export const searchUsers = async (req, res) => {
     const total = await prisma.user.count({
       where: {
         AND: [
-          { isPublic: true },
           {
             OR: [
-              { username: { contains: q, mode: 'insensitive' } },
-              { bio: { contains: q, mode: 'insensitive' } }
-            ]
-          }
-        ]
-      }
+              { username: { contains: q, mode: "insensitive" } },
+              { bio: { contains: q, mode: "insensitive" } },
+            ],
+          },
+        ],
+      },
     });
 
-    res.status(StatusCodes.OK).json({
+    return res.status(StatusCodes.OK).json({
       users: usersWithStatus,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
         total,
-        pages: Math.ceil(total / limit)
-      }
+        pages: Math.ceil(total / parseInt(limit)),
+      },
     });
   } catch (err) {
     console.error("searchUsers error", err);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to search users" });
+    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to search users" });
   }
 };
+
+/**
+ * Get user profile by username
+ * @route GET /users/username/:username
+ */
+ /**
+ * GET /users/username/:username
+ * Instagram-like: show header + counts even if private; gate content via canViewContent.
+ */
+export const getUserByUsername = async (req, res) => {
+  const { username } = req.params;
+  const currentUserId = req.userId;
+
+  const user = await prisma.user.findUnique({
+    where: { username },
+    select: {
+      id: true,
+      username: true,
+      avatar: true,
+      bio: true,
+      isPublic: true,
+      _count: { select: { followers: true, following: true, posts: true } },
+    },
+  });
+
+  if (!user) {
+    return res.status(StatusCodes.NOT_FOUND).json({ error: "Profile not found" });
+  }
+
+  const allowed = user.isPublic || (await canViewPrivateContent(user.id, currentUserId));
+
+  let followStatus = "NONE";
+  if (currentUserId && currentUserId !== user.id) {
+    const follow = await prisma.follow.findUnique({
+      where: { followerId_followingId: { followerId: currentUserId, followingId: user.id } },
+      select: { status: true },
+    });
+    followStatus = follow?.status || "NONE";
+  }
+
+  return res
+    .status(StatusCodes.OK)
+    .json({ ...user, followStatus, canViewContent: allowed });
+};
+

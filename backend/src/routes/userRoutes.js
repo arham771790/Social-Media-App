@@ -3,7 +3,7 @@ import {
   me, 
   updateProfile, 
   getUserProfile, 
-  searchUsers 
+  searchUsers ,getUserByUsername
 } from "../controllers/userController.js";
 import { getSettings, updateSettings } from "../controllers/settingsController.js";
 import { auth } from "../middlewares/auth.js";
@@ -20,7 +20,11 @@ router.put("/me", auth, updateProfile);
 router.get("/search", searchUsers);
 
 // Get public profile of any user by ID
+router.get("/username/:username", getUserByUsername);
+
 router.get("/:id", getUserProfile);
+// Get public profile of any user by username
+
 
 
 // Get own settings (JWT required)
