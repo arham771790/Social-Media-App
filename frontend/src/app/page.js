@@ -34,7 +34,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-black text-white flex items-center justify-center">
       <div className="text-center space-y-6">
         <h1 className="text-4xl font-bold bg-gradient-to-r from-orange-400 to-blue-400 bg-clip-text text-transparent">
-          Instopedia
+          Instopedia...
         </h1>
         <p className="text-gray-400 text-lg">Welcome to your next social app</p>
         <div className="space-x-4">
