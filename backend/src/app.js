@@ -1,4 +1,3 @@
-// app.js
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -19,39 +18,60 @@ import healthRoutes from "./routes/healthRoutes.js";
 import discoverRoutes from "./routes/discoverRoutes.js";
 import exploreRoutes from "./routes/exploreRoutes.js";
 import verifyRoutes from "./routes/verifyRoutes.js";
-
-
 // import rtcRoutes from "./routes/rtcRoutes.js"; // optional
 
 import swaggerUi from "swagger-ui-express";
 import YAML from "yamljs";
-
 import { errorHandler } from "./middlewares/error.js";
 
 dotenv.config();
 
 const app = express();
 
-// --- CORS (parse env correctly and trim) ---
-const origins = ( process.env.CORS_ORIGINS)
+/* ------------------------------------------------------------------
+   ✅ CORS CONFIGURATION
+   ------------------------------------------------------------------ */
+
+// Read and sanitize environment variable
+const rawOrigins = process.env.CORS_ORIGINS || "";
+const allowedOrigins = rawOrigins
   .split(",")
-  .map(s => s.trim())
+  .map(origin => origin.trim())
   .filter(Boolean);
 
-app.use(cors({ origin: origins, credentials: true }));
-// (Optional) preflight helper for some envs
-// app.options("*", cors({ origin: origins, credentials: true }));
+// CORS options
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow no-origin requests (like Postman or health checks)
+    if (!origin) return callback(null, true);
 
-// --- JSON parsing (multer handles files) ---
-app.use(express.json({ limit: "1mb" })); // raise if you need larger payloads
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked: ${origin}`);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  credentials: true,
+};
 
-// --- Passport (OAuth) ---
+// Use CORS with options
+app.use(cors(corsOptions));
+
+// Handle preflight (OPTIONS) requests properly
+app.options("*", cors(corsOptions));
+
+/* ------------------------------------------------------------------
+   ✅ EXPRESS SETUP
+   ------------------------------------------------------------------ */
+app.use(express.json({ limit: "1mb" }));
 app.use(passport.initialize());
 
-// --- Routes (make sure your Axios baseURL is <API_URL>/api) ---
+/* ------------------------------------------------------------------
+   ✅ ROUTES
+   ------------------------------------------------------------------ */
 app.use("/api/auth", authRoutes);
-
-app.use("/api/users",userRoutes);
+app.use("/api/users", userRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api", feedRoutes);
@@ -66,22 +86,22 @@ app.use("/api/health", healthRoutes);
 app.use("/api/explore", exploreRoutes);
 app.use("/api/discover", discoverRoutes);
 app.use("/api/auth", verifyRoutes);
-// app.use("/api/rtc", rtcRoutes); // if added
+// app.use("/api/rtc", rtcRoutes);
 
-// --- Swagger (safe load) ---
+/* ------------------------------------------------------------------
+   ✅ SWAGGER SETUP (optional)
+   ------------------------------------------------------------------ */
 try {
   const swaggerDocument = YAML.load("./swagger.yaml");
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-} catch (e) {
-  console.warn("Swagger not loaded (swagger.yaml missing?):", e.message);
+} catch (err) {
+  console.warn("⚠️ Swagger not loaded:", err.message);
 }
 
-// --- 404 fallback ---
-app.use((req, res) => {
-  res.status(404).json({ error: "Not found" });
-});
-
-// --- Error handler ---
+/* ------------------------------------------------------------------
+   ✅ ERROR HANDLING
+   ------------------------------------------------------------------ */
+app.use((req, res) => res.status(404).json({ error: "Not found" }));
 app.use(errorHandler);
 
 export default app;
