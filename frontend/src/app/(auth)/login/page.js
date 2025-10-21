@@ -35,20 +35,34 @@ export default function LoginPage() {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!validateForm()) return;
-    try {
-      await login({ email: formData.email, password: formData.password }); // store throws on error
-      toast({ title: 'Welcome back!', description: 'You have successfully logged in.' });
-      router.push('/feed');
-    } catch (err) {
-      toast({
-        title: 'Login failed',
-        description: err.message || 'Please check your credentials and try again.',
-        variant: 'destructive',
-      });
-    }
-  };
+  e.preventDefault();
+  if (!validateForm()) return;
+
+  let slowServerToastId = null;
+  const timeout = setTimeout(() => {
+    slowServerToastId = toast({
+      title: 'Server Warming Up...',
+      description: 'The server is starting (free tier). This may take 30–60 seconds.',
+    });
+  }, 5000); // show after 5 seconds
+
+  try {
+    await login({ email: formData.email, password: formData.password });
+    clearTimeout(timeout);
+    if (slowServerToastId) toast.dismiss(slowServerToastId);
+    toast({ title: 'Welcome back!', description: 'You have successfully logged in.' });
+    router.push('/feed');
+  } catch (err) {
+    clearTimeout(timeout);
+    if (slowServerToastId) toast.dismiss(slowServerToastId);
+    toast({
+      title: 'Login failed',
+      description: err.message || 'Please check your credentials and try again.',
+      variant: 'destructive',
+    });
+  }
+};
+
 
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">

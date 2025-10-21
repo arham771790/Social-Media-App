@@ -80,28 +80,50 @@ export default function RegisterPage() {
     return Object.keys(errors).length === 0;
   };
 
+  // Helper: show delayed "server waking up" toast
+  const showSlowServerHint = (message = 'Server is starting up (free tier)... this may take 30–60s.') => {
+    let toastId = null;
+    const timer = setTimeout(() => {
+      toastId = toast({
+        title: 'Server Warming Up...',
+        description: message,
+      });
+    }, 5000); // 5s delay before showing
+    return {
+      clear: () => {
+        clearTimeout(timer);
+        if (toastId) toast.dismiss(toastId);
+      },
+    };
+  };
+
+  // STEP 1 — Send Code
   const requestCode = async () => {
     setErr('');
     if (!form.email.trim()) return setErr('Email is required');
     if (!/\S+@\S+\.\S+/.test(form.email)) return setErr('Please enter a valid email');
 
+    const slowToast = showSlowServerHint('Please wait while we send the code...');
     try {
       setSending(true);
       await requestEmailVerification(form.email.trim());
       toast({ title: 'Code sent', description: 'We emailed you a verification code.' });
       setResendIn(45);
-      setEmailLocked(true); // lock email so the code remains tied to this email
+      setEmailLocked(true);
     } catch (e) {
       setErr(e?.message || 'Failed to send code');
     } finally {
       setSending(false);
+      slowToast.clear();
     }
   };
 
+  // STEP 2 — Verify Code
   const verifyCode = async () => {
     setErr('');
     if (!form.code.trim()) return setErr('Enter the 6-digit code');
 
+    const slowToast = showSlowServerHint('Verifying your code, please wait...');
     try {
       setVerifying(true);
       const res = await confirmEmailVerification({
@@ -109,7 +131,6 @@ export default function RegisterPage() {
         code: form.code.trim(),
       });
 
-      // Accept multiple return shapes
       const token =
         typeof res === 'string'
           ? res
@@ -124,15 +145,18 @@ export default function RegisterPage() {
       setErr(e?.message || 'Invalid or expired code');
     } finally {
       setVerifying(false);
+      slowToast.clear();
     }
   };
 
+  // STEP 3 — Register User
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErr('');
     if (!verifyToken) return setErr('Please verify your email first');
     if (!validateRegisterFields()) return;
 
+    const slowToast = showSlowServerHint('Creating your account, please wait...');
     try {
       setRegistering(true);
       const data = await registerVerified({
@@ -153,11 +177,11 @@ export default function RegisterPage() {
       setErr(err?.message || 'Registration failed');
     } finally {
       setRegistering(false);
+      slowToast.clear();
     }
   };
 
   const resetEmailFlow = () => {
-    // allow changing email safely — clear code/token/cooldown
     setEmailLocked(false);
     setVerifyToken('');
     setForm((f) => ({ ...f, code: '' }));
@@ -172,6 +196,13 @@ export default function RegisterPage() {
 
   return (
     <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
+      {/* Optional banner for visual feedback */}
+      {(sending || verifying || registering) && (
+        <div className="fixed top-0 left-0 w-full bg-yellow-500 text-black text-center py-2 text-sm z-50">
+          Server is waking up... please wait 30–60 seconds.
+        </div>
+      )}
+
       <Card className="w-full max-w-md bg-gray-900 border-gray-800">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
@@ -263,7 +294,7 @@ export default function RegisterPage() {
               </Button>
             </div>
 
-            {/* Step 3: User details (activate after verification) */}
+            {/* Step 3: User details (after verification) */}
             <div className="space-y-2">
               <Input
                 name="username"
