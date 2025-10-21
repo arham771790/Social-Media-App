@@ -1,4 +1,7 @@
 // server.js
+import dotenv from "dotenv";
+dotenv.config();
+
 import app from "./app.js";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
@@ -7,21 +10,66 @@ import prisma from "./utils/db.js"; // for membership checks
 
 const PORT = process.env.PORT || 4000;
 
-// ----- Create HTTP server -----
+/* -------------------------------------------------------
+   Shared CORS origin parsing (same as in app.js)
+-------------------------------------------------------- */
+const parseOrigins = (raw) =>
+  (raw || "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean)
+    .map((o) => o.replace(/\/+$/, "")); // strip trailing slash(es)
+
+const allowedOriginsList = parseOrigins(process.env.CORS_ORIGINS || "");
+
+// In non-production, also allow local Next.js dev servers
+if (process.env.NODE_ENV !== "production") {
+  for (const dev of ["http://localhost:3000", "http://127.0.0.1:3000"]) {
+    if (!allowedOriginsList.includes(dev)) allowedOriginsList.push(dev);
+  }
+}
+
+const wildcardToRegExp = (pattern) => {
+  const escaped = pattern
+    .replace(/[-/\\^$+?.()|[\]{}]/g, "\\$&")
+    .replace(/\\\*/g, ".*");
+  return new RegExp(`^${escaped}$`);
+};
+
+const wildcardOrigins = allowedOriginsList
+  .filter((o) => o.includes("*"))
+  .map(wildcardToRegExp);
+
+const staticOrigins = allowedOriginsList.filter((o) => !o.includes("*"));
+
+const isOriginAllowed = (origin) => {
+  if (!origin) return true; // allow Postman / server-to-server calls
+  const cleaned = origin.replace(/\/+$/, "");
+  return (
+    staticOrigins.includes(cleaned) ||
+    wildcardOrigins.some((re) => re.test(cleaned))
+  );
+};
+
+/* -------------------------------------------------------
+   HTTP + Socket.IO
+-------------------------------------------------------- */
 const httpServer = createServer(app);
 
-// ----- Allowed origins (shared format with app.js) -----
-const rawOrigins = process.env.CORS_ORIGINS || "";
-const allowedOrigins = rawOrigins
-  .split(",")
-  .map(s => s.trim())
-  .filter(Boolean);
-
-// ----- Socket.IO -----
 export const io = new SocketIOServer(httpServer, {
-  cors: { origin: allowedOrigins, credentials: true },
-  pingInterval: 25000,
-  pingTimeout: 20000,
+  cors: {
+    origin: (origin, cb) => {
+  const cleaned = origin?.replace(/\/+$/, "");
+  if (isOriginAllowed(cleaned)) return cb(null, true);
+  console.warn(`Socket.IO CORS blocked: ${origin}`);
+  return cb(new Error("Not allowed by CORS"));
+},
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  },
+  pingInterval: 25_000,
+  pingTimeout: 20_000,
 });
 
 /* Optional: Redis adapter for multi-instance scaling
@@ -33,7 +81,9 @@ await pub.connect(); await sub.connect();
 io.adapter(createAdapter(pub, sub));
 */
 
-// -------- Presence tracking --------
+/* -------------------------------------------------------
+   Presence tracking
+-------------------------------------------------------- */
 const userSockets = new Map(); // userId -> Set<socketId>
 export const userSocketMap = new Map(); // userId -> last socketId
 
@@ -64,7 +114,9 @@ export function isUserOnline(userId) {
   return !!(set && set.size > 0);
 }
 
-// ---- Socket auth middleware ----
+/* -------------------------------------------------------
+   Socket auth middleware (JWT)
+-------------------------------------------------------- */
 io.use((socket, next) => {
   const { token } = socket.handshake.auth || {};
   if (!token) return next(new Error("unauthorized"));
@@ -79,7 +131,9 @@ io.use((socket, next) => {
   }
 });
 
-// ---- Helper: membership check ----
+/* -------------------------------------------------------
+   Helper: membership check
+-------------------------------------------------------- */
 async function ensureMembership(chatGroupId, userId) {
   try {
     const row = await prisma.chatGroup.findFirst({
@@ -98,7 +152,9 @@ async function ensureMembership(chatGroupId, userId) {
   }
 }
 
-// ---- Socket events ----
+/* -------------------------------------------------------
+   Socket events
+-------------------------------------------------------- */
 io.on("connection", (socket) => {
   const userId = socket.data.userId;
   if (!userId) return socket.disconnect(true);
@@ -106,7 +162,7 @@ io.on("connection", (socket) => {
   addPresence(userId, socket.id);
   socket.join(`user:${userId}`);
 
-  // ---- Room join/leave ----
+  // Room join/leave
   socket.on("room:join", async ({ chatGroupId, roomId }, ack) => {
     const rid = String(chatGroupId ?? roomId ?? "");
     if (!rid) return ack?.({ ok: false, error: "invalid_room" });
@@ -123,37 +179,34 @@ io.on("connection", (socket) => {
     return ack?.({ ok: true });
   });
 
-  // ---- Backward-compatible simple join/leave ----
+  // Backward-compatible join/leave
   socket.on("join", async (roomId) => {
     if (!roomId) return;
-    if (await ensureMembership(String(roomId), userId)) socket.join(String(roomId));
+    if (await ensureMembership(String(roomId), userId))
+      socket.join(String(roomId));
   });
   socket.on("leave", (roomId) => {
     if (roomId) socket.leave(String(roomId));
   });
 
-  // ---- WebRTC signaling ----
+  // WebRTC signaling
   socket.on("call:ring", ({ roomId, fromUser, mode }) => {
     socket.to(roomId).emit("call:ring", { roomId, fromUser, mode });
   });
-
   socket.on("call:offer", ({ roomId, sdp, fromUser }) => {
     socket.to(roomId).emit("call:offer", { sdp, fromUser });
   });
-
   socket.on("call:answer", ({ roomId, sdp, fromUser }) => {
     socket.to(roomId).emit("call:answer", { sdp, fromUser });
   });
-
   socket.on("call:candidate", ({ roomId, candidate, fromUser }) => {
     socket.to(roomId).emit("call:candidate", { candidate, fromUser });
   });
-
   socket.on("call:end", ({ roomId, reason }) => {
     io.to(roomId).emit("call:end", { reason });
   });
 
-  // ---- Typing events ----
+  // Typing events
   socket.on("typing:start", ({ roomId, chatGroupId, userId: uid, username }) => {
     const rid = String(chatGroupId ?? roomId ?? "");
     if (!rid) return;
@@ -180,7 +233,9 @@ io.on("connection", (socket) => {
   });
 });
 
-// ----- Start server -----
+/* -------------------------------------------------------
+   Start server
+-------------------------------------------------------- */
 httpServer.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
