@@ -1,33 +1,40 @@
 'use client';
 
 import { useState } from 'react';
+import { Button } from '@/components/ui/button';
 
 export default function PostContent({ title, content }) {
-    const [showFull, setShowFull] = useState(false);
-    const contentPreview = content?.length > 200 ? `${content.substring(0, 200)}...` : content;
+  const [showFull, setShowFull] = useState(false);
+  const shouldClamp = (content?.length || 0) > 220;
+  const contentPreview = shouldClamp ? `${content.slice(0, 220)}...` : content;
 
-    return (
-        <div className="px-3 sm:px-4 py-2">
-            {title && (
-                <h3 className="text-base sm:text-lg font-semibold text-foreground break-words mb-2">
-                    {title}
-                </h3>
-            )}
-            {content && (
-                <>
-                    <p className={`text-sm sm:text-base text-foreground leading-relaxed ${!showFull ? 'line-clamp-3 sm:line-clamp-none' : ''}`}>
-                        {showFull ? content : contentPreview}
-                    </p>
-                    {content.length > 200 && (
-                        <button
-                            onClick={() => setShowFull(!showFull)}
-                            className="mt-1 text-primary hover:underline text-sm font-medium"
-                        >
-                            {showFull ? 'Show less' : 'Show more'}
-                        </button>
-                    )}
-                </>
-            )}
+  if (!title && !content) return null;
+
+  return (
+    <div className="space-y-3">
+      {title && (
+        <h3 className="font-display text-[1.9rem] leading-[1.05] tracking-[-0.04em] text-foreground sm:text-[2.15rem]">
+          {title}
+        </h3>
+      )}
+
+      {content && (
+        <div className="max-w-none">
+          <p className="text-[15px] leading-7 text-foreground/88 sm:text-base">
+            {showFull ? content : contentPreview}
+          </p>
+          {shouldClamp && (
+            <Button
+              variant="link"
+              size="sm"
+              onClick={() => setShowFull((s) => !s)}
+              className="mt-2 h-auto px-0 text-sm text-primary"
+            >
+              {showFull ? 'Show less' : 'Read more'}
+            </Button>
+          )}
         </div>
-    );
+      )}
+    </div>
+  );
 }

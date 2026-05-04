@@ -17,100 +17,115 @@ export default function IncomingCallCenter() {
   const audioRef = useRef(null);
 
   useEffect(() => {
-    const s = socketManager.getSocket();
-    if (!s) return;
+    let s = null;
+    let interval = null;
 
     const onRing = ({ roomId, fromUser, mode = "audio" }) => {
-      // Save incoming state in store (so accept can work from anywhere)
+      if (useCallStore.getState().incoming) return;
+
       setIncoming({ roomId, fromUser, mode });
 
-      // show persistent toast
-      const content = () => (
-        <div className="w-[92vw] max-w-sm">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded bg-blue-600/10 text-blue-600">
-              <PhoneIncoming className="w-5 h-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="font-medium truncate">
-                Incoming {mode === "video" ? "video" : "audio"} call
-                {fromUser?.username ? ` from @${fromUser.username}` : ""}
+      const content = (t) => (
+        <div className={`${t.visible ? 'animate-enter' : 'animate-leave'} max-w-sm w-full bg-white shadow-lg rounded-lg pointer-events-auto flex ring-1 ring-black ring-opacity-5 overflow-hidden`}>
+          <div className="flex-1 w-0 p-4">
+            <div className="flex items-start">
+              <div className="flex-shrink-0 pt-0.5">
+                <div className="p-2 rounded-full bg-blue-50 text-blue-600">
+                  <PhoneIncoming className="w-5 h-5" />
+                </div>
               </div>
-              <div className="text-xs text-muted-foreground truncate">
-                Room: {roomId}
+              <div className="ml-3 flex-1">
+                <p className="text-sm font-medium text-gray-900">
+                  {mode === "video" ? "Video Call" : "Audio Call"}
+                </p>
+                <p className="mt-1 text-sm text-gray-500">
+                  {fromUser?.username ? `@${fromUser.username}` : "Someone"} is calling you...
+                </p>
               </div>
             </div>
           </div>
-
-          <div className="mt-3 flex items-center justify-end gap-2">
-            <Button
-              size="sm"
-              variant="secondary"
+          <div className="flex border-l border-gray-200">
+            <button
               onClick={() => {
-                declineIncoming("declined");
-                if (toastIdRef.current) toast.dismiss(toastIdRef.current);
+                declineIncoming();
+                toast.dismiss(t.id);
               }}
+              className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-red-600 hover:text-red-500 focus:outline-none"
             >
-              <PhoneOff className="w-4 h-4 mr-1" />
               Decline
-            </Button>
-            <Button
-              size="sm"
+            </button>
+            <button
               onClick={() => {
                 acceptIncoming();
-                if (toastIdRef.current) toast.dismiss(toastIdRef.current);
+                toast.dismiss(t.id);
               }}
+              className="w-full border border-transparent rounded-none rounded-r-lg p-4 flex items-center justify-center text-sm font-medium text-indigo-600 hover:text-indigo-500 focus:outline-none"
             >
-              {mode === "video" ? (
-                <Video className="w-4 h-4 mr-1" />
-              ) : (
-                <Phone className="w-4 h-4 mr-1" />
-              )}
               Accept
-            </Button>
+            </button>
           </div>
-
-          <audio ref={audioRef} preload="auto" src="/ringtone.mp3" />
         </div>
       );
 
-      // NOTE: no autoClose
-      toastIdRef.current = toast.custom(content, { duration: Infinity });
+      toastIdRef.current = toast.custom(content, { duration: 30000 });
 
-      // loop ringtone gently
-      const playLoop = () => {
-        try {
-          audioRef.current?.play().catch(() => { });
-        } catch { }
-      };
-      playLoop();
-      const t = setInterval(playLoop, 3500);
-
-      const stop = () => {
-        clearInterval(t);
-        try {
-          audioRef.current && (audioRef.current.pause(), (audioRef.current.currentTime = 0));
-        } catch { }
-      };
-
-      // stop on accept/decline/end
-      const off = () => {
-        stop();
-        if (toastIdRef.current) toast.dismiss(toastIdRef.current);
-        toastIdRef.current = null;
-      };
-      useCallStore.subscribe((st) => {
-        if (!st.incoming) off();
-      });
-
-      s.once("call:end", off);
+      if (audioRef.current) {
+        audioRef.current.loop = true;
+        audioRef.current.play().catch(() => {
+          console.log("User interaction required for audio");
+        });
+      }
     };
 
-    s.on("call:ring", onRing);
+    const onEnd = () => {
+      if (toastIdRef.current) {
+        toast.dismiss(toastIdRef.current);
+        toastIdRef.current = null;
+      }
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+      setIncoming(null);
+    };
+
+    const setupSocket = () => {
+      s = socketManager.getSocket();
+      if (s) {
+        s.on("call:ring", onRing);
+        s.on("call:end", onEnd);
+        if (interval) clearInterval(interval);
+      }
+    };
+
+    setupSocket();
+    if (!s) {
+      interval = setInterval(setupSocket, 500);
+    }
+
     return () => {
-      s.off("call:ring", onRing);
+      if (interval) clearInterval(interval);
+      if (s) {
+        s.off("call:ring", onRing);
+        s.off("call:end", onEnd);
+      }
+      onEnd();
     };
   }, [acceptIncoming, declineIncoming, setIncoming]);
 
-  return null; // headless; just binds to socket + toast
+  // Handle cleanup if incoming state is cleared from elsewhere
+  useEffect(() => {
+    if (!incoming && toastIdRef.current) {
+      toast.dismiss(toastIdRef.current);
+      toastIdRef.current = null;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    }
+  }, [incoming]);
+
+  return (
+    <audio ref={audioRef} src="/ringtone.mp3" preload="auto" />
+  );
 }

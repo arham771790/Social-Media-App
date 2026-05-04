@@ -156,11 +156,12 @@ export const useCommentStore = create((set, get) => ({
 
       // Optimistically bump commentsCount on feed card if present
       try {
-        const current = get().byPost[postId];
-        const delta = 1;
-        useFeedStore.getState().patchFeedItem?.(postId, {
-          commentsCount: (prev => (typeof prev === "number" ? prev + delta : delta))(undefined)
-        });
+        const feedState = useFeedStore.getState();
+        const currentPost =
+          feedState.home.find((p) => p.id === postId) ||
+          feedState.explore.find((p) => p.id === postId);
+        const currentCount = Number(currentPost?.commentsCount || 0);
+        feedState.patchFeedItem?.(postId, { commentsCount: currentCount + 1 });
       } catch {}
 
       return data;
@@ -204,9 +205,12 @@ export const useCommentStore = create((set, get) => ({
 
       // Optionally decrement commentsCount on feed card
       try {
-        useFeedStore.getState().patchFeedItem?.(postId, {
-          commentsCount: (prev => (typeof prev === "number" ? Math.max(0, prev - 1) : 0))(undefined)
-        });
+        const feedState = useFeedStore.getState();
+        const currentPost =
+          feedState.home.find((p) => p.id === postId) ||
+          feedState.explore.find((p) => p.id === postId);
+        const currentCount = Number(currentPost?.commentsCount || 0);
+        feedState.patchFeedItem?.(postId, { commentsCount: Math.max(0, currentCount - 1) });
       } catch {}
 
       return true;

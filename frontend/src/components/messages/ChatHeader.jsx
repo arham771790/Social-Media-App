@@ -1,14 +1,13 @@
 // src/components/messages/ChatHeader.jsx
  "use client";
 
-import { useState } from "react";
  import { Phone, Video, Info, Menu, ArrowLeft } from "lucide-react";
  import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
  import { Button } from "@/components/ui/button";
  import { Badge } from "@/components/ui/badge";
- import CallPanel from "@/components/messages/call/CallPanel";
  import { useAuthStore } from "@/store/authStore";
  import { useMessageStore } from "@/store/messageStore";
+ import { useCallStore } from "@/store/callStore";
 
  export default function ChatHeader({
    thread,
@@ -18,8 +17,7 @@ import { useState } from "react";
    hasActive,
    onToggleInfo = () => {},
  }) {
-   const [callOpen, setCallOpen] = useState(false);
-   const [mode, setMode] = useState("audio");
+   const startCall = useCallStore((s) => s.startCallFromThread);
    const me = useAuthStore((s) => s.user);
    const onlineIds = useMessageStore((s) => s.onlineUserIds);
 
@@ -85,17 +83,17 @@ import { useState } from "react";
            <Button
              size="icon"
              variant="ghost"
-            onClick={() => { setMode("audio"); setCallOpen(true); }}
+             onClick={() => startCall(thread.id, "audio")}
              title="Audio call"
-                aria-label="Audio call"
-               disabled={!callEnabled}
+             aria-label="Audio call"
+             disabled={!callEnabled}
            >
              <Phone className="w-5 h-5" />
            </Button>
            <Button
              size="icon"
              variant="ghost"
-            onClick={() => { setMode("video"); setCallOpen(true); }}
+             onClick={() => startCall(thread.id, "video")}
              title="Video call"
              aria-label="Video call"
              disabled={!callEnabled}
@@ -107,8 +105,6 @@ import { useState } from "react";
            </Button>
          </div>
        </div>
-
-       <CallPanel open={callOpen} onOpenChange={setCallOpen} roomId={thread?.id} mode={mode} />
      </>
    );
  }

@@ -1,8 +1,9 @@
-// src/components/stories/StoryViewer.jsx
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
-import { X, ChevronLeft, ChevronRight, Trash2, Play } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Pause, Play, Trash2, X } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 
 export default function StoryViewer({
   stories,
@@ -11,12 +12,12 @@ export default function StoryViewer({
   onNext,
   onPrevious,
   canDelete = false,
-  onDelete,       // (storyId) => void
+  onDelete,
 }) {
   const [progress, setProgress] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(true);
   const progressInterval = useRef(null);
+  const videoRef = useRef(null);
 
   const currentStory = stories[currentIndex];
   const STORY_DURATION = 5000;
@@ -37,22 +38,31 @@ export default function StoryViewer({
       });
     };
 
-    if (!isPaused && isPlaying) {
+    if (!isPaused) {
       progressInterval.current = setInterval(tick, 50);
     } else {
       clearInterval(progressInterval.current);
     }
     return () => clearInterval(progressInterval.current);
-  }, [currentIndex, isPaused, isPlaying, currentStory, onNext, onClose, stories.length, defer]);
+  }, [currentIndex, currentStory, defer, isPaused, onClose, onNext, stories.length]);
 
-  useEffect(() => setProgress(0), [currentIndex]);
+  useEffect(() => {
+    setProgress(0);
+    setIsPaused(false);
+  }, [currentIndex]);
 
-  const handlePauseToggle = () => {
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || currentStory?.type !== 'VIDEO') return;
+    if (isPaused) video.pause();
+    else video.play().catch(() => {});
+  }, [currentStory?.type, currentIndex, isPaused]);
+
+  const handlePauseToggle = useCallback(() => {
     if (currentStory?.type === 'VIDEO') {
-      setIsPaused((p) => !p);
-      setIsPlaying((p) => !p);
+      setIsPaused((paused) => !paused);
     }
-  };
+  }, [currentStory?.type]);
 
   const handleKey = useCallback((e) => {
     if (e.key === 'ArrowRight' && currentIndex < stories.length - 1) onNext();
@@ -62,7 +72,7 @@ export default function StoryViewer({
       e.preventDefault();
       handlePauseToggle();
     }
-  }, [currentIndex, stories.length, onNext, onPrevious, onClose]);
+  }, [currentIndex, handlePauseToggle, onClose, onNext, onPrevious, stories.length]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKey);
@@ -72,127 +82,156 @@ export default function StoryViewer({
   if (!currentStory) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/95 flex items-center justify-center">
-      {/* Header: user + actions */}
-      <div className="absolute top-0 left-0 right-0 px-3 sm:px-4 pt-4">
-        {/* Progress bars */}
-        <div className="flex gap-1 mb-3">
-          {stories.map((_, i) => (
-            <div key={i} className="flex-1 h-1 bg-white/20 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-white rounded-full transition-all"
-                style={{
-                  width:
-                    i < currentIndex ? '100%' :
-                    i === currentIndex ? `${progress}%` : '0%',
-                }}
+    <div className="fixed inset-0 z-[60] bg-[rgba(7,10,13,0.92)] backdrop-blur-md">
+      <div className="absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/45 to-transparent" />
+      <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black/55 to-transparent" />
+
+      <div className="flex h-full items-center justify-center px-3 py-4 sm:px-6">
+        <div className="relative flex h-full w-full max-w-[420px] flex-col overflow-hidden rounded-[2rem] border border-white/10 bg-[rgba(10,12,17,0.72)] shadow-[0_40px_100px_-50px_rgba(0,0,0,1)] backdrop-blur-xl sm:max-w-[460px]">
+          <div className="absolute inset-x-0 top-0 z-20 px-3 pb-4 pt-3">
+            <div className="mb-3 flex gap-1.5">
+              {stories.map((_, i) => (
+                <div key={i} className="h-1 flex-1 overflow-hidden rounded-full bg-white/14">
+                  <div
+                    className="h-full rounded-full bg-white transition-all"
+                    style={{
+                      width:
+                        i < currentIndex ? '100%' :
+                        i === currentIndex ? `${progress}%` : '0%',
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3 text-white">
+                <Avatar className="size-10 border-white/10">
+                  <AvatarImage src={currentStory.user?.avatar || '/default-avatar.png'} alt={currentStory.user?.username || 'user'} />
+                  <AvatarFallback>{currentStory.user?.username?.[0]?.toUpperCase() || 'U'}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold tracking-[-0.01em]">
+                    {currentStory.user?.username || 'user'}
+                  </div>
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/60">
+                    {new Date(currentStory.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {currentStory.type === 'VIDEO' && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-10 rounded-full bg-[rgba(10,12,17,0.45)] text-white"
+                    onClick={handlePauseToggle}
+                    title={isPaused ? 'Resume' : 'Pause'}
+                  >
+                    {isPaused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+                  </Button>
+                )}
+                {canDelete && (
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="size-10 rounded-full bg-[rgba(10,12,17,0.45)] text-white"
+                    onClick={() => onDelete?.(currentStory.id)}
+                    title="Delete story"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="size-10 rounded-full bg-[rgba(10,12,17,0.45)] text-white"
+                  onClick={onClose}
+                  title="Close"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div className="relative flex-1" onClick={handlePauseToggle}>
+            {currentStory.type === 'VIDEO' ? (
+              <video
+                ref={videoRef}
+                src={currentStory.mediaUrl}
+                className="h-full w-full object-cover"
+                autoPlay
+                muted
+                playsInline
               />
-            </div>
-          ))}
-        </div>
-
-        {/* User row */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-white">
-            <img
-              src={currentStory.user?.avatar || '/default-avatar.png'}
-              alt={currentStory.user?.username || 'user'}
-              className="w-8 h-8 rounded-full"
-            />
-            <div className="text-sm">
-              <div className="font-semibold leading-tight">
-                {currentStory.user?.username || 'user'}
-              </div>
-              <div className="text-[11px] text-white/70">
-                {new Date(currentStory.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {canDelete && (
-              <button
-                className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
-                onClick={() => onDelete?.(currentStory.id)}
-                title="Delete story"
-              >
-                <Trash2 className="w-5 h-5" />
-              </button>
+            ) : (
+              <img
+                src={currentStory.mediaUrl}
+                alt="Story"
+                className="h-full w-full object-cover"
+                loading="eager"
+              />
             )}
+
+            {currentStory.type === 'VIDEO' && isPaused && (
+              <div className="absolute inset-0 grid place-items-center bg-black/20">
+                <div className="rounded-full border border-white/12 bg-[rgba(10,12,17,0.58)] p-4 text-white backdrop-blur-md">
+                  <Play className="ml-0.5 h-10 w-10 fill-current" />
+                </div>
+              </div>
+            )}
+
+            {currentStory.caption && (
+              <div className="absolute inset-x-0 bottom-0 z-10 p-4">
+                <div className="rounded-[1.4rem] border border-white/10 bg-[rgba(10,12,17,0.52)] p-3 text-sm leading-6 text-white/90 backdrop-blur-md">
+                  {currentStory.caption}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {currentIndex > 0 && (
             <button
-              className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white"
-              onClick={onClose}
-              title="Close"
+              onClick={onPrevious}
+              className="absolute left-0 top-0 z-10 h-full w-1/3"
+              aria-label="Previous"
+            />
+          )}
+          <button
+            onClick={() => {
+              if (currentIndex < stories.length - 1) onNext();
+              else onClose();
+            }}
+            className="absolute right-0 top-0 z-10 h-full w-1/3"
+            aria-label="Next"
+          />
+
+          {currentIndex > 0 && (
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={onPrevious}
+              className="absolute left-4 top-1/2 z-20 hidden size-11 -translate-y-1/2 rounded-full bg-[rgba(10,12,17,0.48)] text-white sm:inline-flex"
+              aria-label="Previous"
             >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+          )}
+
+          {currentIndex < stories.length - 1 && (
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={onNext}
+              className="absolute right-4 top-1/2 z-20 hidden size-11 -translate-y-1/2 rounded-full bg-[rgba(10,12,17,0.48)] text-white sm:inline-flex"
+              aria-label="Next"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
+          )}
         </div>
-      </div>
-
-      {/* Navigation arrows (desktop) */}
-      {currentIndex > 0 && (
-        <button
-          onClick={onPrevious}
-          className="hidden sm:flex absolute left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white"
-          aria-label="Previous"
-        >
-          <ChevronLeft className="w-9 h-9" />
-        </button>
-      )}
-      {currentIndex < stories.length - 1 && (
-        <button
-          onClick={onNext}
-          className="hidden sm:flex absolute right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white"
-          aria-label="Next"
-        >
-          <ChevronRight className="w-9 h-9" />
-        </button>
-      )}
-
-      {/* Content */}
-      <div
-        className="relative w-full h-full max-w-[480px] sm:max-w-[640px] md:max-w-[800px] aspect-[9/16] mx-auto"
-        onClick={handlePauseToggle}
-      >
-        {currentStory.type === 'VIDEO' ? (
-          <video
-            src={currentStory.mediaUrl}
-            className="w-full h-full object-cover"
-            autoPlay
-            muted
-            playsInline
-          />
-        ) : (
-          <img
-            src={currentStory.mediaUrl}
-            alt="Story"
-            className="w-full h-full object-cover"
-            loading="eager"
-          />
-        )}
-
-        {/* Video paused overlay */}
-        {currentStory.type === 'VIDEO' && isPaused && (
-          <div className="absolute inset-0 grid place-items-center bg-black/30">
-            <Play className="w-16 h-16 text-white/90" />
-          </div>
-        )}
-
-        {/* Caption */}
-        {currentStory.caption && (
-          <div className="absolute bottom-20 left-4 right-4 text-white">
-            <p className="text-sm bg-black/40 p-2 rounded">
-              {currentStory.caption}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* Full-screen tap areas (mobile) */}
-      <div className="absolute inset-0 sm:hidden">
-        <div className="absolute left-0 top-0 bottom-0 w-1/2" onClick={(e) => { e.stopPropagation(); if (currentIndex > 0) onPrevious(); }} />
-        <div className="absolute right-0 top-0 bottom-0 w-1/2" onClick={(e) => { e.stopPropagation(); if (currentIndex < stories.length - 1) onNext(); else onClose(); }} />
       </div>
     </div>
   );

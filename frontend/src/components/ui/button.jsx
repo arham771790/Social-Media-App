@@ -5,29 +5,29 @@ import { cva } from "class-variance-authority";
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-medium transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive shadow-sm hover:shadow-md active:scale-[0.98]",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium tracking-[-0.01em] transition-[transform,box-shadow,background-color,border-color,color,opacity] duration-200 disabled:pointer-events-none disabled:opacity-45 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-2 focus-visible:ring-ring/70 focus-visible:ring-offset-2 focus-visible:ring-offset-background aria-invalid:border-destructive aria-invalid:ring-destructive/20 active:translate-y-px",
   {
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 hover:shadow-md border border-primary/20",
+          "border border-primary/25 bg-primary text-primary-foreground shadow-[0_16px_36px_-20px_rgba(214,173,118,0.72)] hover:-translate-y-0.5 hover:bg-primary/92",
         destructive:
-          "bg-destructive text-destructive-foreground shadow-sm hover:bg-destructive/90 hover:shadow-md border border-destructive/20 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
+          "border border-destructive/30 bg-destructive text-destructive-foreground shadow-[0_14px_28px_-18px_rgba(194,73,55,0.8)] hover:-translate-y-0.5 hover:bg-destructive/92",
         outline:
-          "border-2 border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground hover:border-accent-foreground/30 dark:bg-input/30 dark:border-input dark:hover:bg-input/50 dark:hover:border-input/50",
+          "border border-border/80 bg-background/40 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] hover:-translate-y-0.5 hover:border-primary/35 hover:bg-accent/80",
         secondary:
-          "bg-secondary text-secondary-foreground shadow-sm hover:bg-secondary/80 hover:shadow-md border border-secondary/20",
+          "border border-border/70 bg-secondary/80 text-secondary-foreground shadow-[0_12px_28px_-22px_rgba(0,0,0,0.9)] hover:-translate-y-0.5 hover:border-primary/20 hover:bg-secondary",
         ghost:
-          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 border border-transparent hover:border-accent/20",
-        link: "text-primary underline-offset-4 hover:underline shadow-none hover:shadow-none active:scale-100",
-        gradient: "bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-sm hover:from-purple-700 hover:to-pink-700 hover:shadow-md border-0",
+          "border border-transparent text-muted-foreground shadow-none hover:bg-white/[0.04] hover:text-foreground",
+        link: "rounded-none border-0 px-0 text-primary underline-offset-4 shadow-none hover:text-primary/85 hover:underline",
+        gradient: "border border-white/10 bg-[linear-gradient(135deg,rgba(214,173,118,0.96),rgba(102,126,109,0.92))] text-primary-foreground shadow-[0_18px_32px_-20px_rgba(214,173,118,0.78)] hover:-translate-y-0.5 hover:brightness-105",
       },
       size: {
-        default: "h-10 px-4 py-2 has-[>svg]:px-3",
-        sm: "h-8 rounded-md gap-1.5 px-3 has-[>svg]:px-2.5 text-xs",
-        lg: "h-12 rounded-lg px-6 has-[>svg]:px-4 text-base",
-        xl: "h-14 rounded-xl px-8 has-[>svg]:px-6 text-lg",
-        icon: "size-10",
+        default: "h-11 px-4 py-2 has-[>svg]:px-3.5",
+        sm: "h-9 gap-1.5 rounded-lg px-3.5 text-xs has-[>svg]:px-3",
+        lg: "h-12 rounded-2xl px-6 text-base has-[>svg]:px-4.5",
+        xl: "h-14 rounded-[1.4rem] px-8 text-lg has-[>svg]:px-6",
+        icon: "size-10 rounded-full",
       },
     },
     defaultVariants: {

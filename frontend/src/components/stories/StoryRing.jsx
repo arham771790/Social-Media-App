@@ -1,5 +1,5 @@
-// src/components/stories/StoryRing.jsx
 'use client';
+
 import { Plus } from 'lucide-react';
 
 export default function StoryRing({
@@ -15,38 +15,42 @@ export default function StoryRing({
     <button
       type="button"
       onClick={onClick}
-      className="flex flex-col items-center space-y-2 group shrink-0"
+      className="story-ring group flex shrink-0 flex-col items-center gap-2 text-center"
       aria-label={username}
     >
       <div
         className={[
-          'relative w-16 h-16 rounded-full p-0.5 transition-transform duration-200 group-active:scale-95',
-          hasStory && !isViewed ? 'bg-gradient-to-r from-purple-500 via-pink-500 to-red-500' : '',
-          hasStory && isViewed ? 'bg-gray-600' : '',
-          !hasStory ? 'bg-gray-700' : '',
+          'relative size-[4.5rem] rounded-full p-[2px] transition-transform duration-200 group-active:scale-[0.98]',
+          hasStory && !isViewed
+            ? 'bg-[linear-gradient(135deg,rgba(214,173,118,1),rgba(104,134,118,0.96))] shadow-[0_18px_34px_-18px_rgba(214,173,118,0.65)]'
+            : '',
+          hasStory && isViewed ? 'bg-border/80' : '',
+          !hasStory ? 'bg-white/10' : '',
         ].join(' ')}
       >
-        <div className="w-full h-full rounded-full bg-black p-0.5">
+        <div className="flex size-full items-center justify-center rounded-full bg-[rgba(12,15,20,0.94)] p-[3px]">
           {showAddButton ? (
-            <div className="w-full h-full rounded-full bg-gray-800 flex items-center justify-center">
-              <Plus className="w-6 h-6 text-white" />
+            <div className="flex size-full items-center justify-center rounded-full bg-[linear-gradient(135deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] text-primary">
+              <Plus className="h-6 w-6" />
             </div>
           ) : (
             <img
               src={user?.avatar || user?.profilePicture || '/default-avatar.png'}
               alt={user?.username || 'user'}
-              className="w-full h-full object-cover rounded-full"
+              className="size-full rounded-full object-cover"
               loading="lazy"
             />
           )}
         </div>
+
         {showAddButton && (
-          <span className="absolute -bottom-1 -right-1 w-6 h-6 bg-blue-500 rounded-full flex items-center justify-center border-2 border-black">
-            <Plus className="w-3 h-3 text-white" />
+          <span className="absolute -bottom-1 -right-1 flex size-6 items-center justify-center rounded-full border-2 border-[rgba(12,15,20,0.94)] bg-primary text-primary-foreground shadow-[0_14px_22px_-14px_rgba(214,173,118,0.9)]">
+            <Plus className="h-3.5 w-3.5" />
           </span>
         )}
       </div>
-      <span className="text-[11px] sm:text-xs text-center max-w-[72px] truncate">
+
+      <span className="max-w-[4.8rem] truncate text-[11px] font-medium text-muted-foreground transition-colors duration-200 group-hover:text-foreground sm:text-xs">
         {username}
       </span>
     </button>

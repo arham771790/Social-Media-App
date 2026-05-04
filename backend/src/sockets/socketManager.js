@@ -72,7 +72,7 @@ class SocketManager {
     this.userSocketMap.set(userId, socketId);
     
     if (set.size === 1) {
-      this.io.emit("presence:online", { userId });
+      void this._emitPresenceEvent("presence:online", userId);
     }
   }
 
@@ -84,11 +84,30 @@ class SocketManager {
     if (set.size === 0) {
       this.userSockets.delete(userId);
       this.userSocketMap.delete(userId);
-      this.io.emit("presence:offline", { userId });
+      void this._emitPresenceEvent("presence:offline", userId);
     } else {
       const any = set.values().next().value;
       this.userSocketMap.set(userId, any);
     }
+  }
+
+  async _emitPresenceEvent(event, userId) {
+    const audienceUserIds = await this._getPresenceAudienceUserIds(userId);
+    audienceUserIds.forEach((audienceUserId) => {
+      this.io.to(`user:${audienceUserId}`).emit(event, { userId });
+    });
+  }
+
+  _emitToUserRooms(userIds, event, payload) {
+    userIds.forEach((targetUserId) => {
+      this.io.to(`user:${targetUserId}`).emit(event, payload);
+    });
+  }
+
+  async _emitCallEventToPeers(roomId, senderUserId, event, payload) {
+    const participantIds = await this._getChatGroupParticipantIds(roomId);
+    const peerIds = participantIds.filter((participantId) => participantId !== String(senderUserId));
+    this._emitToUserRooms(peerIds, event, payload);
   }
 
   async _handleRoomJoin(socket, { chatGroupId, roomId }, ack) {
@@ -113,17 +132,40 @@ class SocketManager {
   }
 
   _attachSignaling(socket) {
-    const events = ["call:ring", "call:offer", "call:answer", "call:candidate"];
+    const userId = socket.data.userId;
+
+    socket.on("call:ring", async (data) => {
+      const { roomId } = data;
+      if (!roomId) return;
+      
+      // Security: verify caller is in the room
+      const isMember = await this._checkMembership(roomId, userId);
+      if (!isMember) return;
+
+      await this._emitCallEventToPeers(roomId, userId, "call:ring", data);
+    });
+
+    const events = ["call:ready", "call:offer", "call:answer", "call:candidate"];
     events.forEach(event => {
-      socket.on(event, (data) => {
-        if (data.roomId) {
-          socket.to(String(data.roomId)).emit(event, data);
-        }
+      socket.on(event, async (data) => {
+        const { roomId } = data;
+        if (!roomId) return;
+
+        // Verify membership
+        const isMember = await this._checkMembership(roomId, userId);
+        if (!isMember) return;
+
+        // Forward to others in the room
+        socket.to(String(roomId)).emit(event, data);
       });
     });
     
-    socket.on("call:end", ({ roomId, reason }) => {
-      if (roomId) this.io.to(String(roomId)).emit("call:end", { reason });
+    socket.on("call:end", async ({ roomId, reason }) => {
+      if (!roomId) return;
+      const isMember = await this._checkMembership(roomId, userId);
+      if (!isMember) return;
+
+      await this._emitCallEventToPeers(roomId, userId, "call:end", { roomId, reason });
     });
   }
 
@@ -149,6 +191,7 @@ class SocketManager {
         where: {
           id: chatGroupId,
           OR: [
+            { createdById: userId },
             { members: { some: { id: userId } } },
             { admins: { some: { id: userId } } }
           ]
@@ -157,6 +200,61 @@ class SocketManager {
       return count > 0;
     } catch {
       return false;
+    }
+  }
+
+  async _getChatGroupParticipantIds(chatGroupId) {
+    try {
+      const group = await prisma.chatGroup.findUnique({
+        where: { id: chatGroupId },
+        select: {
+          createdById: true,
+          admins: { select: { id: true } },
+          members: { select: { id: true } },
+        },
+      });
+
+      if (!group) return [];
+
+      return Array.from(new Set([
+        String(group.createdById),
+        ...group.admins.map(({ id }) => String(id)),
+        ...group.members.map(({ id }) => String(id)),
+      ]));
+    } catch {
+      return [];
+    }
+  }
+
+  async _getPresenceAudienceUserIds(userId) {
+    try {
+      const groups = await prisma.chatGroup.findMany({
+        where: {
+          OR: [
+            { members: { some: { id: userId } } },
+            { admins: { some: { id: userId } } },
+            { createdById: userId },
+          ],
+        },
+        select: {
+          createdById: true,
+          admins: { select: { id: true } },
+          members: { select: { id: true } },
+        },
+      });
+
+      const audience = new Set();
+      groups.forEach((group) => {
+        audience.add(String(group.createdById));
+        group.admins.forEach(({ id }) => audience.add(String(id)));
+        group.members.forEach(({ id }) => audience.add(String(id)));
+      });
+      audience.delete(String(userId));
+
+      return [...audience];
+    } catch (error) {
+      logger.warn(`Failed to compute presence audience for ${userId}: ${error.message}`);
+      return [];
     }
   }
 

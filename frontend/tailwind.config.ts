@@ -1,7 +1,9 @@
 import type { Config } from "tailwindcss";
 
+const withOpacity = (variable: string) => `hsl(var(${variable}) / <alpha-value>)`;
+
 const config: Config = {
-    darkMode: ["class"],
+    darkMode: "class",
     content: [
         "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
         "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -10,45 +12,45 @@ const config: Config = {
     theme: {
         extend: {
             colors: {
-                background: "var(--background)",
-                foreground: "var(--foreground)",
+                background: withOpacity("--background"),
+                foreground: withOpacity("--foreground"),
                 card: {
-                    DEFAULT: "var(--card)",
-                    foreground: "var(--card-foreground)",
+                    DEFAULT: withOpacity("--card"),
+                    foreground: withOpacity("--card-foreground"),
                 },
                 popover: {
-                    DEFAULT: "var(--popover)",
-                    foreground: "var(--popover-foreground)",
+                    DEFAULT: withOpacity("--popover"),
+                    foreground: withOpacity("--popover-foreground"),
                 },
                 primary: {
-                    DEFAULT: "var(--primary)",
-                    foreground: "var(--primary-foreground)",
+                    DEFAULT: withOpacity("--primary"),
+                    foreground: withOpacity("--primary-foreground"),
                 },
                 secondary: {
-                    DEFAULT: "var(--secondary)",
-                    foreground: "var(--secondary-foreground)",
+                    DEFAULT: withOpacity("--secondary"),
+                    foreground: withOpacity("--secondary-foreground"),
                 },
                 muted: {
-                    DEFAULT: "var(--muted)",
-                    foreground: "var(--muted-foreground)",
+                    DEFAULT: withOpacity("--muted"),
+                    foreground: withOpacity("--muted-foreground"),
                 },
                 accent: {
-                    DEFAULT: "var(--accent)",
-                    foreground: "var(--accent-foreground)",
+                    DEFAULT: withOpacity("--accent"),
+                    foreground: withOpacity("--accent-foreground"),
                 },
                 destructive: {
-                    DEFAULT: "var(--destructive)",
-                    foreground: "var(--destructive-foreground)",
+                    DEFAULT: withOpacity("--destructive"),
+                    foreground: withOpacity("--destructive-foreground"),
                 },
-                border: "var(--border)",
-                input: "var(--input)",
-                ring: "var(--ring)",
+                border: withOpacity("--border"),
+                input: withOpacity("--input"),
+                ring: withOpacity("--ring"),
                 chart: {
-                    "1": "var(--chart-1)",
-                    "2": "var(--chart-2)",
-                    "3": "var(--chart-3)",
-                    "4": "var(--chart-4)",
-                    "5": "var(--chart-5)",
+                    "1": withOpacity("--chart-1"),
+                    "2": withOpacity("--chart-2"),
+                    "3": withOpacity("--chart-3"),
+                    "4": withOpacity("--chart-4"),
+                    "5": withOpacity("--chart-5"),
                 },
             },
             borderRadius: {

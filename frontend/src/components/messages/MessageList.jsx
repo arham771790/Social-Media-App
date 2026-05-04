@@ -15,7 +15,7 @@ export default function MessageList({ messages = [], meId, chatGroupId }) {
 
   return (
     <div className="space-y-4">
-      {messages.map((msg) => {
+      {Array.from(new Map(messages.map(m => [m.id, m])).values()).map((msg) => {
         const isMe = String(msg.sender?.id) === String(meId);
         const hasMedia = Boolean(msg.mediaUrl);
 

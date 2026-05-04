@@ -148,6 +148,32 @@ class MessageController {
     io.to(String(chatGroupId)).emit("call:end", { reason: reason || "ended" });
     res.status(StatusCodes.OK).json({ ok: true });
   });
+
+  getIceServers = catchAsync(async (req, res, next) => {
+    // In a production environment, you would call your TURN provider's API (e.g., Twilio, Metered) here.
+    // For development, providing Google's STUN and Metered's free open relay TURN server.
+    const iceServers = [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      {
+        urls: "turn:openrelay.metered.ca:80",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+      {
+        urls: "turn:openrelay.metered.ca:443",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      },
+      {
+        urls: "turn:openrelay.metered.ca:443?transport=tcp",
+        username: "openrelayproject",
+        credential: "openrelayproject",
+      }
+    ];
+
+    res.status(StatusCodes.OK).json(iceServers);
+  });
 }
 
 export default new MessageController();

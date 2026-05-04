@@ -38,7 +38,7 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/60 backdrop-blur-sm",
+        "fixed inset-0 z-50 bg-[rgba(7,10,13,0.72)] backdrop-blur-md data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
         className
       )}
       {...props} />
@@ -57,7 +57,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-xl border border-border/50 p-6 shadow-2xl duration-200 sm:max-w-lg backdrop-blur-sm",
+          "fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-6 rounded-[calc(var(--radius)+10px)] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] bg-card/95 p-6 shadow-[0_36px_90px_-44px_rgba(0,0,0,0.96)] backdrop-blur-2xl duration-200 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:max-w-lg",
           className
         )}
         {...props}>
@@ -65,7 +65,7 @@ function DialogContent({
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"
-            className="ring-offset-background focus:ring-ring data-[state=open]:bg-accent data-[state=open]:text-muted-foreground absolute top-4 right-4 rounded-lg opacity-70 transition-all duration-200 hover:opacity-100 hover:bg-accent/50 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:not([class*='size-'])]:size-4 p-1">
+            className="absolute top-4 right-4 rounded-full border border-transparent p-1.5 text-muted-foreground/90 opacity-75 transition-all duration-200 hover:border-white/10 hover:bg-white/[0.04] hover:opacity-100 focus:outline-hidden focus:ring-2 focus:ring-ring/40 focus:ring-offset-2 focus:ring-offset-background disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:not([class*='size-'])]:size-4">
             <XIcon />
             <span className="sr-only">Close</span>
           </DialogPrimitive.Close>
@@ -106,7 +106,7 @@ function DialogTitle({
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("text-lg leading-none font-semibold", className)}
+      className={cn("font-display text-2xl leading-none font-semibold tracking-[-0.03em]", className)}
       {...props} />
   );
 }
@@ -118,35 +118,9 @@ function DialogDescription({
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn("text-muted-foreground text-sm", className)}
+      className={cn("text-muted-foreground text-sm leading-6", className)}
       {...props} />
   );
-}
-export default function ExampleDialog() {
-  return (
-    <Dialog>
-      <DialogTrigger>Open Dialog</DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          {/* Visible title */}
-          <DialogTitle>Profile Settings</DialogTitle>
-
-          {/* Visible description */}
-          <DialogDescription>
-            Make changes to your profile. Click save when you’re done.
-          </DialogDescription>
-
-          {/* Or hide both while keeping accessibility: */}
-          {/* <VisuallyHidden><DialogTitle>Profile Settings</DialogTitle></VisuallyHidden>
-              <VisuallyHidden><DialogDescription>Update your profile settings</DialogDescription></VisuallyHidden> */}
-        </DialogHeader>
-
-        <div className="p-4">
-          <p>Here goes your form or content</p>
-        </div>
-      </DialogContent>
-    </Dialog>
-  )
 }
 
 export {

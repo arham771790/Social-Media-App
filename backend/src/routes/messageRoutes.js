@@ -30,6 +30,7 @@ router.post("/messages/:chatGroupId/typing/stop", messageController.typingStop);
 router.get("/messages/:chatGroupId/presence", messageController.getChatPresence);
 
 // Signaling
+router.get("/calls/ice-servers", messageController.getIceServers);
 router.post("/messages/:chatGroupId/call/offer", messageController.callOffer);
 router.post("/messages/:chatGroupId/call/answer", messageController.callAnswer);
 router.post("/messages/:chatGroupId/call/candidate", messageController.callCandidate);

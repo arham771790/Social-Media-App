@@ -1,7 +1,31 @@
 'use client';
 
-import { Heart, MessageCircle, Share, Bookmark, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { Bookmark, Heart, Loader2, MessageCircle, Share } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+function ActionButton({ active = false, tone = 'default', label, count, pending, onClick, icon }) {
+  const toneClasses = {
+    default: active ? 'border-primary/20 bg-primary/10 text-primary' : 'border-white/6 bg-background/24 text-muted-foreground hover:text-foreground',
+    danger: active ? 'border-rose-500/24 bg-rose-500/12 text-rose-300' : 'border-white/6 bg-background/24 text-muted-foreground hover:text-rose-300',
+  };
+
+  return (
+    <motion.button
+      whileTap={{ scale: 0.97 }}
+      onClick={onClick}
+      className={cn(
+        'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition-all duration-200',
+        toneClasses[tone]
+      )}
+      disabled={pending}
+      aria-label={label}
+    >
+      {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
+      <span className="font-medium tracking-[-0.01em]">{count}</span>
+    </motion.button>
+  );
+}
 
 export default function PostActions({
   isLiked,
@@ -12,48 +36,57 @@ export default function PostActions({
   bookmarkPending,
   onLike,
   onBookmark,
-  onToggleComments
+  onToggleComments,
 }) {
   return (
-    <div className="px-3 sm:px-4 pb-3 sm:pb-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          {/* Like */}
-          <motion.button
-            whileTap={{ scale: 0.95 }}
+    <div className="border-t border-white/6 px-4 py-4 sm:px-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <ActionButton
+            active={isLiked}
+            tone="danger"
+            label="Like post"
+            count={likesCount || 0}
+            pending={likePending}
             onClick={onLike}
-            className="flex items-center space-x-2 group"
-            disabled={likePending}
+            icon={<Heart className={cn('h-4 w-4', isLiked && 'fill-current')} />}
+          />
+
+          <ActionButton
+            label="Toggle comments"
+            count={commentsCount || 0}
+            onClick={onToggleComments}
+            icon={<MessageCircle className="h-4 w-4" />}
+          />
+
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            className="inline-flex items-center gap-2 rounded-full border border-white/6 bg-background/24 px-3 py-2 text-sm text-muted-foreground transition-all duration-200 hover:text-foreground"
+            aria-label="Share post"
           >
-            {likePending ? (
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-            ) : (
-              <motion.div animate={isLiked ? { scale: [1, 1.2, 1] } : { scale: 1 }} transition={{ duration: 0.3 }}>
-                <Heart className={`w-6 h-6 transition-colors ${isLiked ? 'fill-red-500 text-red-500' : 'text-muted-foreground group-hover:text-red-500'}`} />
-              </motion.div>
-            )}
-            <span className="text-sm font-medium">{likesCount}</span>
+            <Share className="h-4 w-4" />
+            <span className="font-medium tracking-[-0.01em]">Share</span>
           </motion.button>
-
-          {/* Comments */}
-          <button className="flex items-center space-x-2 group" onClick={onToggleComments}>
-            <MessageCircle className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
-            <span className="text-sm font-medium">{commentsCount || 0}</span>
-          </button>
-
-          {/* Share */}
-          <button className="flex items-center space-x-2 group">
-            <Share className="w-6 h-6 text-muted-foreground group-hover:text-primary transition-colors" />
-          </button>
         </div>
 
-        {/* Bookmark */}
-        <motion.button whileTap={{ scale: 0.95 }} onClick={onBookmark} className="group" disabled={bookmarkPending}>
-          {bookmarkPending ? (
-            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-          ) : (
-            <Bookmark className={`w-6 h-6 transition-colors ${isBookmarked ? 'fill-primary text-primary' : 'text-muted-foreground group-hover:text-primary'}`} />
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          onClick={onBookmark}
+          className={cn(
+            'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition-all duration-200',
+            isBookmarked
+              ? 'border-primary/20 bg-primary/10 text-primary'
+              : 'border-white/6 bg-background/24 text-muted-foreground hover:text-foreground'
           )}
+          disabled={bookmarkPending}
+          aria-label="Bookmark post"
+        >
+          {bookmarkPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Bookmark className={cn('h-4 w-4', isBookmarked && 'fill-current')} />
+          )}
+          <span className="font-medium tracking-[-0.01em]">Save</span>
         </motion.button>
       </div>
     </div>

@@ -1,19 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Home,
-  Search,
-  MessageCircle,
-  Heart,
-  PlusSquare,
-  User,
-  Settings,
-  LogOut,
-  Menu,
   Compass,
+  Heart,
+  Home,
+  LogOut,
+  MessageCircle,
+  PlusSquare,
+  Search,
+  Settings,
+  Sparkles,
+  User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -30,16 +29,14 @@ import { useToast } from "@/hooks/use-toast";
 import { useNotifications } from "@/hooks/useNotifications";
 
 const navigationItems = [
-  { name: "Home", href: "/feed", icon: Home },
-  { name: "Search", href: "/search", icon: Search },
-  { name: "Messages", href: "/messages", icon: MessageCircle },
-  { name: "Notifications", href: "/notifications", icon: Heart },
-  { name: "Explore", href: "/explore", icon: Compass },
-  { name: "Create", href: "/create", icon: PlusSquare },
-  { name: "Profile", href: "/profile", icon: User },
+  { name: "Home", href: "/feed", icon: Home, description: "Latest notes" },
+  { name: "Search", href: "/search", icon: Search, description: "Find people" },
+  { name: "Messages", href: "/messages", icon: MessageCircle, description: "Private room" },
+  { name: "Notifications", href: "/notifications", icon: Heart, description: "Signals" },
+  { name: "Explore", href: "/explore", icon: Compass, description: "Fresh corners" },
+  { name: "Create", href: "/create", icon: PlusSquare, description: "Publish" },
+  { name: "Profile", href: "/profile", icon: User, description: "Your page" },
 ];
-
-const COLLAPSE_KEY = "sidebarCollapsed:v1";
 
 const isActivePath = (pathname, href) => {
   if (!pathname || !href) return false;
@@ -52,110 +49,97 @@ export default function Sidebar() {
   const router = useRouter();
   const { toast } = useToast();
   const { user, logout } = useAuthStore();
-
-  // ✅ separate selectors to avoid new object snapshots
   const { unreadCount } = useNotifications(20);
-  const msgUnread = 0; // Placeholder for messageStore unread if needed separately
-
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-    try {
-      const saved = localStorage.getItem(COLLAPSE_KEY);
-      if (saved != null) setIsCollapsed(saved === "1");
-    } catch { }
-  }, []);
-
-  useEffect(() => {
-    if (!mounted) return;
-    try {
-      localStorage.setItem(COLLAPSE_KEY, isCollapsed ? "1" : "0");
-    } catch { }
-  }, [isCollapsed, mounted]);
+  const safeUserInitial = user?.username?.[0]?.toUpperCase() || "I";
+  const msgUnread = 0;
 
   const handleLogout = async () => {
     await logout();
-    toast({ title: "Logged out", description: "You have been successfully logged out." });
+    toast({ title: "Logged out", description: "You have been signed out." });
     router.push("/login");
   };
 
-  const safeUserInitial = useMemo(
-    () => (user?.username ? user.username[0].toUpperCase() : "U"),
-    [user?.username]
-  );
-
-  if (!mounted) return null;
-
   return (
-    <div className="hidden lg:flex flex-col h-full w-64 bg-gradient-to-b from-gray-900 to-black border-r border-gray-800/50 backdrop-blur-sm">
-      {/* Header */}
-      <div className="p-6">
-        <div className="flex items-center justify-between">
-          <Link href="/feed" className="flex items-center space-x-2 group">
-            {!isCollapsed ? (
-              <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent group-hover:from-purple-300 group-hover:via-pink-300 group-hover:to-blue-300 transition-all duration-300">
+    <div className="surface-panel flex h-full flex-col rounded-[2rem] p-4">
+      <div className="mb-4">
+        <div className="flex items-start justify-between gap-3">
+          <Link href="/feed" className="group flex min-w-0 items-center gap-3">
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-[1.35rem] border border-white/10 bg-[linear-gradient(135deg,rgba(214,173,118,0.98),rgba(102,126,109,0.9))] shadow-[0_18px_34px_-20px_rgba(214,173,118,0.76)]">
+              <span className="font-display text-[1.45rem] text-primary-foreground">I</span>
+            </div>
+            <div className="min-w-0">
+              <p className="font-display text-[2rem] leading-none tracking-[-0.05em] text-foreground">
                 Instopedia
-              </h1>
-            ) : (
-              <div className="w-10 h-10 bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-purple-500/25 transition-all duration-300">
-                <span className="text-white font-bold text-sm">I</span>
-              </div>
-            )}
+              </p>
+              <p className="mt-1 text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
+                Social notebook
+              </p>
+            </div>
           </Link>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsCollapsed((v) => !v)}
-            className="text-gray-400 hover:text-white hover:bg-gray-800/50 rounded-lg transition-all duration-200"
-            aria-label="Toggle sidebar"
-          >
-            <Menu className="w-5 h-5" />
+          <Button asChild size="sm" className="rounded-full">
+            <Link href="/create">
+              <PlusSquare className="h-4 w-4" />
+              Create
+            </Link>
           </Button>
+        </div>
+
+        <div className="mt-4 rounded-[1.5rem] border border-white/7 bg-background/28 p-4">
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            Daily rhythm
+          </div>
+          <p className="mt-3 text-sm leading-6 text-foreground/88">
+            Move between feed, people, and conversations without visual noise.
+          </p>
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 px-3">
-        <ul className="space-y-2">
+      <nav className="flex-1">
+        <ul className="space-y-1.5">
           {navigationItems.map((item) => {
             const active = isActivePath(pathname, item.href);
             const Icon = item.icon;
-
-            const showNotif = item.name === "Notifications" && unreadCount > 0;
-            const showMsg = item.name === "Messages" && msgUnread > 0;
+            const badgeValue =
+              item.name === "Notifications"
+                ? unreadCount
+                : item.name === "Messages"
+                  ? msgUnread
+                  : 0;
 
             return (
               <li key={item.name}>
                 <Link
                   href={item.href}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex items-center px-3 py-3 rounded-xl text-gray-300 hover:text-white hover:bg-gray-800/50 transition-all duration-200 group",
-                    active &&
-                    "text-white bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 shadow-lg shadow-purple-500/10"
+                    "group flex items-center gap-3 rounded-[1.35rem] border px-3.5 py-3 transition-all duration-200",
+                    active
+                      ? "border-primary/20 bg-primary/10 text-foreground shadow-[0_18px_40px_-34px_rgba(214,173,118,0.72)]"
+                      : "border-transparent text-muted-foreground hover:border-white/7 hover:bg-white/[0.04] hover:text-foreground"
                   )}
                 >
-                  <span className="relative inline-flex">
-                    <Icon
-                      className={cn(
-                        "w-6 h-6 flex-shrink-0 transition-all duration-200",
-                        active ? "text-purple-400" : "group-hover:text-purple-300"
-                      )}
-                    />
-                    {(showNotif || showMsg) && (
-                      <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-gradient-to-r from-red-500 to-pink-500 text-[10px] leading-[18px] text-white font-semibold text-center shadow-lg">
-                        {(showNotif ? unreadCount : msgUnread) > 99
-                          ? "99+"
-                          : (showNotif ? unreadCount : msgUnread)}
+                  <span
+                    className={cn(
+                      "relative flex size-10 shrink-0 items-center justify-center rounded-[1rem] border transition-all duration-200",
+                      active
+                        ? "border-primary/22 bg-primary/12 text-primary"
+                        : "border-white/7 bg-background/30 text-muted-foreground group-hover:border-primary/16 group-hover:text-foreground"
+                    )}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {badgeValue > 0 && (
+                      <span className="absolute -right-1 -top-1 min-w-[1.2rem] rounded-full bg-primary px-1 text-[10px] font-semibold leading-5 text-primary-foreground shadow-[0_12px_20px_-12px_rgba(214,173,118,0.9)]">
+                        {badgeValue > 99 ? "99+" : badgeValue}
                       </span>
                     )}
                   </span>
 
-                  {!isCollapsed && (
-                    <span className="ml-3 text-base font-medium">{item.name}</span>
-                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium tracking-[-0.01em]">{item.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">{item.description}</p>
+                  </div>
                 </Link>
               </li>
             );
@@ -163,45 +147,38 @@ export default function Sidebar() {
         </ul>
       </nav>
 
-      {/* User Menu */}
-      <div className="p-3 border-t border-gray-800/50">
+      <div className="mt-4 rounded-[1.5rem] border border-white/7 bg-background/24 p-2.5">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
-              className="w-full justify-start text-gray-300 hover:text-white hover:bg-gray-800/50 p-3 rounded-xl transition-all duration-200"
+              className="h-auto w-full justify-start rounded-[1.2rem] p-2.5 hover:bg-white/[0.04]"
             >
-              <Avatar className="w-10 h-10 flex-shrink-0 ring-2 ring-purple-500/20">
-                <AvatarImage src={user?.avatar} alt={user?.username} />
-                <AvatarFallback className="bg-gradient-to-r from-purple-600 to-pink-600 text-white text-sm font-semibold">
-                  {safeUserInitial}
-                </AvatarFallback>
+              <Avatar className="size-11">
+                <AvatarImage src={user?.avatar || user?.profilePicture || undefined} alt={user?.username || "user"} />
+                <AvatarFallback>{safeUserInitial}</AvatarFallback>
               </Avatar>
-              {!isCollapsed && (
-                <div className="ml-3 flex-1 text-left">
-                  <p className="text-sm font-medium">{user?.username}</p>
-                  <p className="text-xs text-gray-400">@{user?.username}</p>
-                </div>
-              )}
+
+              <div className="ml-3 flex-1 text-left">
+                <p className="text-sm font-medium text-foreground">@{user?.username || "instopedia"}</p>
+                <p className="text-xs text-muted-foreground">Signed in</p>
+              </div>
+
+              <span className="flex size-2.5 rounded-full bg-emerald-400 shadow-[0_0_18px_rgba(74,222,128,0.7)]" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            className="w-56 bg-gray-900/95 border-gray-700/50 backdrop-blur-sm"
-          >
-            <DropdownMenuItem
-              onClick={() => router.push("/settings")}
-              className="flex items-center cursor-pointer"
-            >
-              <Settings className="w-4 h-4 mr-2" />
+
+          <DropdownMenuContent align="start" className="w-64">
+            <DropdownMenuItem onClick={() => router.push("/profile")}>
+              View profile
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/settings")}>
+              <Settings className="mr-2 h-4 w-4" />
               Settings
             </DropdownMenuItem>
-            <DropdownMenuSeparator className="bg-gray-700/50" />
-            <DropdownMenuItem
-              onClick={handleLogout}
-              className="flex items-center cursor-pointer text-red-400 hover:bg-red-900/20 focus:bg-red-900/20 transition-all duration-200"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
+            <DropdownMenuSeparator />
+            <DropdownMenuItem variant="destructive" onClick={handleLogout}>
+              <LogOut className="mr-2 h-4 w-4" />
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>

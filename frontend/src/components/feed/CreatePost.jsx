@@ -1,36 +1,37 @@
 'use client';
+
 import { useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Image, Video, Smile, X, Sparkles, Wand2, Hash, Type } from 'lucide-react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { usePostStore } from '@/store/postStore';
-import { useFeedStore } from '@/store/feedStore';
-import { useAuthStore } from '@/store/authStore';
-import { useUploadStore } from '@/store/uploadStore';
-import { useAIStore } from '@/store/aiStore';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Hash, Image, Smile, Sparkles, Type, Video, Wand2, X } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { useAIStore } from '@/store/aiStore';
+import { useAuthStore } from '@/store/authStore';
+import { useFeedStore } from '@/store/feedStore';
+import { usePostStore } from '@/store/postStore';
+import { useUploadStore } from '@/store/uploadStore';
 
 export default function CreatePost() {
   const { user: currentUser } = useAuthStore();
   const { createPost, isLoading } = usePostStore();
   const { fetchHome, pagination } = useFeedStore();
   const { uploadFile, isUploading } = useUploadStore();
-  const { 
-    generateTags, 
-    suggestCaptions, 
-    suggestMediaAwareCaptions, 
+  const {
+    generateTags,
+    suggestCaptions,
+    suggestMediaAwareCaptions,
     titleFromContent,
-    isGenerating 
+    isGenerating,
   } = useAIStore();
 
   const fileInputRef = useRef(null);
 
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [content, setContent] = useState('');
   const [title, setTitle] = useState('');
   const [tags, setTags] = useState([]);
@@ -52,7 +53,7 @@ export default function CreatePost() {
       setExpanded(true);
     } catch (err) {
       console.error(err);
-      toast.error("Upload failed");
+      toast.error('Upload failed');
     } finally {
       e.target.value = '';
     }
@@ -66,13 +67,13 @@ export default function CreatePost() {
       } else if (content.trim()) {
         captions = await suggestCaptions(content);
       } else {
-        toast.error("Add some text or media first!");
+        toast.error('Add some text or media first!');
         return;
       }
-      
+
       if (captions?.[0]) {
         setContent(captions[0]);
-        toast.success("Caption suggested!");
+        toast.success('Caption suggested!');
       }
     } catch (err) {
       toast.error(err.message);
@@ -81,17 +82,17 @@ export default function CreatePost() {
 
   const handleAIGenerateTags = async () => {
     if (!content.trim()) {
-      toast.error("Add some text first!");
+      toast.error('Add some text first!');
       return;
     }
     try {
       const suggestedTags = await generateTags(content);
       if (suggestedTags?.length) {
-        setTags(prev => {
-          const combined = [...new Set([...prev, ...suggestedTags.map(t => t.toLowerCase())])];
+        setTags((prev) => {
+          const combined = [...new Set([...prev, ...suggestedTags.map((tag) => tag.toLowerCase())])];
           return combined.slice(0, 5);
         });
-        toast.success("Tags generated!");
+        toast.success('Tags generated!');
       }
     } catch (err) {
       toast.error(err.message);
@@ -100,14 +101,14 @@ export default function CreatePost() {
 
   const handleAIGenerateTitle = async () => {
     if (!content.trim()) {
-      toast.error("Add some text first!");
+      toast.error('Add some text first!');
       return;
     }
     try {
       const suggestedTitle = await titleFromContent(content);
       if (suggestedTitle) {
         setTitle(suggestedTitle);
-        toast.success("Title generated!");
+        toast.success('Title generated!');
       }
     } catch (err) {
       toast.error(err.message);
@@ -131,7 +132,7 @@ export default function CreatePost() {
 
     try {
       await createPost(payload);
-      toast.success("Post created!");
+      toast.success('Post created!');
       await fetchHome({ page: 1, limit: pagination.limit });
 
       setContent('');
@@ -140,7 +141,7 @@ export default function CreatePost() {
       setTagInput('');
       setMedia(null);
       setMediaPreview(null);
-      setExpanded(false);
+      setExpanded(true);
     } catch (err) {
       toast.error(err.message);
     }
@@ -149,18 +150,18 @@ export default function CreatePost() {
   const handleTagAdd = (e) => {
     if (e.key === 'Enter' && tagInput.trim()) {
       e.preventDefault();
-      const t = tagInput.trim().toLowerCase();
-      if (!tags.includes(t) && tags.length < 5) {
-        setTags((prev) => [...prev, t]);
+      const tag = tagInput.trim().toLowerCase();
+      if (!tags.includes(tag) && tags.length < 5) {
+        setTags((prev) => [...prev, tag]);
       }
       setTagInput('');
     }
   };
 
-  const removeTag = (t) => setTags((prev) => prev.filter((x) => x !== t));
+  const removeTag = (tag) => setTags((prev) => prev.filter((item) => item !== tag));
 
   return (
-    <Card className="bg-card border-border/50 mb-6 hover:shadow-lg transition-all duration-300 w-full max-w-2xl mx-auto sm:rounded-2xl">
+    <Card className="mx-auto w-full max-w-3xl overflow-hidden rounded-[2rem] border-white/8">
       <input
         ref={fileInputRef}
         type="file"
@@ -169,193 +170,202 @@ export default function CreatePost() {
         onChange={onFileChange}
       />
 
-      <div className="p-4 sm:p-6">
-        <div className="flex items-start gap-3 sm:gap-4">
-          <Avatar className="w-10 h-10 sm:w-12 sm:h-12 ring-2 ring-primary/20">
-            <AvatarImage src={currentUser?.avatar} />
-            <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-              {currentUser?.username?.[0]?.toUpperCase()}
-            </AvatarFallback>
-          </Avatar>
+      <CardHeader className="border-b border-white/6 pb-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Avatar className="size-12">
+              <AvatarImage src={currentUser?.avatar} />
+              <AvatarFallback>{currentUser?.username?.[0]?.toUpperCase()}</AvatarFallback>
+            </Avatar>
+            <div>
+              <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+                <Sparkles className="h-3.5 w-3.5 text-primary" />
+                Create
+              </div>
+              <CardTitle className="text-[2rem]">Publish something thoughtful</CardTitle>
+              <CardDescription>
+                Write a note, add a photo, or let the AI layer help with framing.
+              </CardDescription>
+            </div>
+          </div>
 
-          <div className="flex-1 min-w-0">
-            <div className="relative group">
+          <Badge variant="outline" className="shrink-0">Live composer</Badge>
+        </div>
+      </CardHeader>
+
+      <CardContent className="p-4 sm:p-6">
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-4">
+            <div className="relative flex items-center gap-2">
+              <Input
+                placeholder="Title (optional)"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                className="pr-12 text-base font-medium"
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="absolute right-2 size-9 rounded-full"
+                onClick={handleAIGenerateTitle}
+                disabled={isGenerating}
+                title="AI generate title"
+              >
+                <Type className={`h-4 w-4 ${isGenerating ? 'animate-pulse' : ''}`} />
+              </Button>
+            </div>
+
+            <div className="rounded-[1.6rem] border border-white/7 bg-background/18 p-4">
               <Textarea
                 placeholder="What's on your mind?"
                 value={content}
-                onChange={(e) => setContent(e.target.value)}
+                onChange={(e) => {
+                  setContent(e.target.value);
+                  if (!expanded) setExpanded(true);
+                }}
                 onFocus={() => setExpanded(true)}
-                className="min-h-[60px] resize-none border-0 p-0 text-base sm:text-lg placeholder:text-muted-foreground focus-visible:ring-0 bg-transparent mb-2"
+                className="min-h-[150px] border-0 bg-transparent px-0 py-0 text-base shadow-none focus-visible:ring-0 sm:text-lg"
               />
-              {expanded && (
-                <div className="flex gap-2 mb-2">
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-8 w-8 rounded-full hover:bg-primary/10 hover:text-primary"
-                    onClick={handleAISuggestCaption}
-                    disabled={isGenerating}
-                    title="AI Suggest Caption"
-                  >
-                    <Sparkles className={`w-4 h-4 ${isGenerating ? 'animate-pulse' : ''}`} />
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-8 w-8 rounded-full hover:bg-primary/10 hover:text-primary"
-                    onClick={handleAIGenerateTags}
-                    disabled={isGenerating}
-                    title="AI Generate Tags"
-                  >
-                    <Hash className={`w-4 h-4 ${isGenerating ? 'animate-pulse' : ''}`} />
-                  </Button>
-                </div>
-              )}
-            </div>
 
-            <AnimatePresence>
-              {expanded && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="mt-4 sm:mt-6 space-y-4"
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAISuggestCaption}
+                  disabled={isGenerating}
+                  className="rounded-full"
                 >
-                  <div className="relative flex items-center gap-2">
-                    <Input
-                      placeholder="Add a title (optional)"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      className="text-base sm:text-lg font-medium border-2 pr-10"
-                    />
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      className="absolute right-2 h-8 w-8 rounded-full hover:bg-primary/10 hover:text-primary"
-                      onClick={handleAIGenerateTitle}
-                      disabled={isGenerating}
-                      title="AI Generate Title"
-                    >
-                      <Type className={`w-4 h-4 ${isGenerating ? 'animate-pulse' : ''}`} />
-                    </Button>
+                  <Wand2 className={`mr-2 h-4 w-4 ${isGenerating ? 'animate-pulse' : ''}`} />
+                  Caption
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAIGenerateTags}
+                  disabled={isGenerating}
+                  className="rounded-full"
+                >
+                  <Hash className={`mr-2 h-4 w-4 ${isGenerating ? 'animate-pulse' : ''}`} />
+                  Tags
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <AnimatePresence>
+            {expanded && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="space-y-5 overflow-hidden"
+              >
+                <div className="rounded-[1.5rem] border border-white/7 bg-background/14 p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium tracking-[-0.01em] text-foreground">Tags</p>
+                    <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                      Up to 5
+                    </p>
                   </div>
 
-                  <div>
-                    <div className="flex flex-wrap gap-2 mb-3">
+                  {!!tags.length && (
+                    <div className="mb-3 flex flex-wrap gap-2">
                       {tags.map((tag) => (
-                        <Badge
-                          key={tag}
-                          variant="secondary"
-                          className="text-xs sm:text-sm hover:scale-105 transition-transform duration-200"
-                        >
+                        <Badge key={tag} variant="secondary">
                           #{tag}
                           <button
+                            type="button"
                             onClick={() => removeTag(tag)}
-                            className="ml-2 hover:text-destructive transition-colors duration-200 p-0.5 rounded-full hover:bg-destructive/10"
+                            className="ml-2 rounded-full transition-colors hover:text-destructive"
                           >
-                            <X className="w-3 h-3" />
+                            <X className="h-3 w-3" />
                           </button>
                         </Badge>
                       ))}
                     </div>
-                    <Input
-                      placeholder="Add tags (press Enter)"
-                      value={tagInput}
-                      onChange={(e) => setTagInput(e.target.value)}
-                      onKeyDown={handleTagAdd}
-                      className="text-sm border-2"
-                    />
-                  </div>
-
-                  {mediaPreview && (
-                    <div className="relative group">
-                      {media?.fileType === 'video' ? (
-                        <video
-                          src={mediaPreview}
-                          controls
-                          className="w-full max-h-64 sm:max-h-80 rounded-xl shadow-lg object-contain"
-                        />
-                      ) : (
-                        <img
-                          src={mediaPreview}
-                          alt="Media preview"
-                          className="w-full max-h-64 sm:max-h-80 object-cover rounded-xl shadow-lg"
-                        />
-                      )}
-                      <button
-                        onClick={() => {
-                          setMedia(null);
-                          setMediaPreview(null);
-                        }}
-                        className="absolute top-3 right-3 p-2 bg-black/60 hover:bg-black/80 text-white rounded-full hover:scale-110 transition-all duration-200 backdrop-blur-sm"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
                   )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
 
-        {expanded && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="flex flex-col sm:flex-row sm:items-center sm:justify-between mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-border/50 gap-3 sm:gap-0"
-          >
-            <div className="flex items-center flex-wrap gap-2 sm:gap-3">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={pickFile}
-                disabled={isUploading}
-                className="hover:bg-primary/10 hover:text-primary transition-all duration-200"
-              >
-                <Image className="w-4 h-4 mr-1 sm:mr-2" />
-                {isUploading ? 'Uploading...' : 'Photo/Video'}
+                  <Input
+                    placeholder="Add tags and press Enter"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={handleTagAdd}
+                  />
+                </div>
+
+                {mediaPreview && (
+                  <div className="relative overflow-hidden rounded-[1.75rem] border border-white/7 bg-background/20">
+                    {media?.fileType === 'video' ? (
+                      <video
+                        src={mediaPreview}
+                        controls
+                        className="max-h-[30rem] w-full object-cover"
+                      />
+                    ) : (
+                      <img
+                        src={mediaPreview}
+                        alt="Media preview"
+                        className="max-h-[30rem] w-full object-cover"
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMedia(null);
+                        setMediaPreview(null);
+                      }}
+                      className="absolute right-4 top-4 rounded-full border border-white/12 bg-[rgba(10,12,17,0.58)] p-2.5 text-white backdrop-blur-md"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="flex flex-col gap-4 border-t border-white/6 pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={pickFile} disabled={isUploading} className="rounded-full">
+                <Image className="mr-2 h-4 w-4" />
+                {isUploading ? 'Uploading...' : 'Photo'}
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="hover:bg-primary/10 hover:text-primary transition-all duration-200"
-              >
-                <Video className="w-4 h-4 mr-1 sm:mr-2" />
-                Record
+              <Button type="button" variant="ghost" size="sm" className="rounded-full">
+                <Video className="mr-2 h-4 w-4" />
+                Video
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="hover:bg-primary/10 hover:text-primary transition-all duration-200"
-              >
-                <Smile className="w-4 h-4 mr-1 sm:mr-2" />
-                Feeling
+              <Button type="button" variant="ghost" size="sm" className="rounded-full">
+                <Smile className="mr-2 h-4 w-4" />
+                Mood
               </Button>
             </div>
 
             <div className="flex items-center justify-end gap-2">
               <Button
+                type="button"
                 variant="outline"
                 size="sm"
-                onClick={() => setExpanded(false)}
-                className="hover:bg-muted transition-all duration-200"
+                onClick={() => setExpanded((value) => !value)}
+                className="rounded-full"
               >
-                Cancel
+                {expanded ? 'Collapse' : 'Expand'}
               </Button>
               <Button
-                onClick={handleSubmit}
+                type="submit"
                 disabled={isLoading || isUploading || isGenerating || (!content.trim() && !media)}
                 size="sm"
                 variant="gradient"
-                className="transition-all duration-200 hover:scale-105"
+                className="rounded-full"
               >
-                {isLoading ? 'Posting...' : 'Post'}
+                {isLoading ? 'Posting...' : 'Publish'}
               </Button>
             </div>
-          </motion.div>
-        )}
-      </div>
+          </div>
+        </form>
+      </CardContent>
     </Card>
   );
 }

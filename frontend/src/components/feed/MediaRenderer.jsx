@@ -1,8 +1,7 @@
-// src/components/feed/MediaRenderer.jsx
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Play, Pause } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -12,8 +11,8 @@ export default function MediaRenderer({ media, className }) {
 
   if (!media || media.length === 0) {
     return (
-      <div className={cn('bg-gray-800 flex items-center justify-center', className)}>
-        <p className="text-gray-400 text-sm">No media</p>
+      <div className={cn('flex items-center justify-center bg-background/30', className)}>
+        <p className="text-sm text-muted-foreground">No media</p>
       </div>
     );
   }
@@ -42,14 +41,14 @@ export default function MediaRenderer({ media, className }) {
 
   if (imageError) {
     return (
-      <div className={cn('bg-gray-800 flex items-center justify-center', className)}>
-        <p className="text-gray-400 text-sm">Failed to load media</p>
+      <div className={cn('flex items-center justify-center bg-background/30', className)}>
+        <p className="text-sm text-muted-foreground">Failed to load media</p>
       </div>
     );
   }
 
   return (
-    <div className={cn('relative group', className)}>
+    <div className={cn('group relative overflow-hidden', className)}>
       {isVideo ? (
         <PlayableVideo
           src={currentMedia.url}
@@ -60,7 +59,7 @@ export default function MediaRenderer({ media, className }) {
         <img
           src={currentMedia.url || currentMedia}
           alt="Post media"
-          className="w-full h-full object-cover"
+          className="h-full w-full object-cover"
           onError={() => setImageError(true)}
         />
       )}
@@ -68,24 +67,24 @@ export default function MediaRenderer({ media, className }) {
       {hasMultiple && (
         <>
           <Button
-            variant="ghost"
-            size="sm"
-            className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+            variant="outline"
+            size="icon"
+            className="absolute left-3 top-1/2 hidden -translate-y-1/2 rounded-full bg-[rgba(10,12,17,0.55)] text-white opacity-0 backdrop-blur-md transition-opacity group-hover:opacity-100 sm:inline-flex"
             onClick={goToPrevious}
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="h-4 w-4" />
           </Button>
 
           <Button
-            variant="ghost"
-            size="sm"
-            className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity"
+            variant="outline"
+            size="icon"
+            className="absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-full bg-[rgba(10,12,17,0.55)] text-white opacity-0 backdrop-blur-md transition-opacity group-hover:opacity-100 sm:inline-flex"
             onClick={goToNext}
           >
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="h-4 w-4" />
           </Button>
 
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex space-x-2">
+          <div className="absolute inset-x-0 bottom-4 flex items-center justify-center gap-2">
             {media.map((_, index) => (
               <button
                 key={index}
@@ -94,14 +93,18 @@ export default function MediaRenderer({ media, className }) {
                   setCurrentIndex(index);
                 }}
                 className={cn(
-                  'w-2 h-2 rounded-full transition-colors',
-                  index === currentIndex ? 'bg-white' : 'bg-white/50'
+                  'h-2 rounded-full transition-all duration-200',
+                  index === currentIndex ? 'w-8 bg-white' : 'w-2 bg-white/45'
                 )}
               />
             ))}
           </div>
         </>
       )}
+
+      <div className="absolute left-4 top-4 rounded-full border border-white/12 bg-[rgba(10,12,17,0.55)] px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-white/90 backdrop-blur-md">
+        {isVideo ? 'Video' : 'Image'}
+      </div>
     </div>
   );
 }
@@ -111,10 +114,10 @@ function PlayableVideo({ src, poster, onError }) {
   const [isPlaying, setIsPlaying] = useState(false);
 
   const sourceType = useMemo(() => {
-    const m = String(src || '').match(/\.(mp4|webm|ogg|mov|mkv)(\?|$)/i);
-    if (!m) return undefined;
-    const ext = m[1].toLowerCase();
-    if (ext === 'mov' || ext === 'mkv') return undefined; // let browser sniff
+    const match = String(src || '').match(/\.(mp4|webm|ogg|mov|mkv)(\?|$)/i);
+    if (!match) return undefined;
+    const ext = match[1].toLowerCase();
+    if (ext === 'mov' || ext === 'mkv') return undefined;
     if (ext === 'mp4') return 'video/mp4';
     if (ext === 'webm') return 'video/webm';
     if (ext === 'ogg') return 'video/ogg';
@@ -123,30 +126,30 @@ function PlayableVideo({ src, poster, onError }) {
 
   const toggle = (e) => {
     e?.stopPropagation?.();
-    const v = videoRef.current;
-    if (!v) return;
-    if (v.paused) v.play();
-    else v.pause();
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) video.play();
+    else video.pause();
   };
 
   useEffect(() => {
-    const v = videoRef.current;
-    if (!v) return;
+    const video = videoRef.current;
+    if (!video) return;
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
-    v.addEventListener('play', onPlay);
-    v.addEventListener('pause', onPause);
+    video.addEventListener('play', onPlay);
+    video.addEventListener('pause', onPause);
     return () => {
-      v.removeEventListener('play', onPlay);
-      v.removeEventListener('pause', onPause);
+      video.removeEventListener('play', onPlay);
+      video.removeEventListener('pause', onPause);
     };
   }, []);
 
   return (
-    <div className="relative w-full h-full">
+    <div className="relative h-full w-full">
       <video
         ref={videoRef}
-        className="w-full h-full object-cover"
+        className="h-full w-full object-cover"
         poster={poster}
         controls
         playsInline
@@ -162,10 +165,10 @@ function PlayableVideo({ src, poster, onError }) {
         <button
           aria-label="Play video"
           onClick={toggle}
-          className="absolute inset-0 flex items-center justify-center bg-black/20"
+          className="absolute inset-0 flex items-center justify-center bg-black/10"
         >
-          <div className="bg-black/50 rounded-full p-3">
-            <Play className="w-8 h-8 text-white fill-current ml-1" />
+          <div className="rounded-full border border-white/15 bg-[rgba(10,12,17,0.58)] p-4 text-white shadow-[0_18px_40px_-24px_rgba(0,0,0,0.9)] backdrop-blur-md">
+            <Play className="ml-0.5 h-8 w-8 fill-current" />
           </div>
         </button>
       )}
@@ -174,9 +177,9 @@ function PlayableVideo({ src, poster, onError }) {
         <button
           aria-label="Pause video"
           onClick={toggle}
-          className="absolute bottom-3 right-3 bg-black/50 hover:bg-black/60 text-white rounded-full p-2"
+          className="absolute bottom-4 right-4 rounded-full border border-white/12 bg-[rgba(10,12,17,0.55)] p-2.5 text-white backdrop-blur-md"
         >
-          <Pause className="w-4 h-4" />
+          <Pause className="h-4 w-4" />
         </button>
       )}
     </div>

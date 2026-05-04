@@ -12,7 +12,7 @@ function Tabs({
   return (
     <TabsPrimitive.Root
       data-slot="tabs"
-      className={cn("flex flex-col gap-3", className)}
+      className={cn("flex flex-col gap-4", className)}
       {...props} />
   );
 }
@@ -25,7 +25,7 @@ function TabsList({
     <TabsPrimitive.List
       data-slot="tabs-list"
       className={cn(
-        "bg-muted text-muted-foreground inline-flex h-10 w-fit items-center justify-center rounded-lg p-1 shadow-sm",
+        "inline-flex min-h-11 w-fit items-center justify-center gap-1 rounded-full border border-border/70 bg-background/30 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] backdrop-blur-sm",
         className
       )}
       {...props} />
@@ -40,7 +40,7 @@ function TabsTrigger({
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
       className={cn(
-        "data-[state=active]:bg-background dark:data-[state=active]:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:data-[state=active]:border-input dark:data-[state=active]:bg-input/30 text-foreground dark:text-muted-foreground inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-transparent px-3 py-1 text-sm font-medium whitespace-nowrap transition-all duration-200 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50 data-[state=active]:shadow-sm data-[state=active]:border-border/50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:not([class*='size-'])]:size-4",
+        "inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full border border-transparent px-4 py-1.5 text-sm font-medium whitespace-nowrap text-muted-foreground transition-[background-color,border-color,color,box-shadow,transform] duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50 data-[state=active]:border-white/10 data-[state=active]:bg-card data-[state=active]:text-foreground data-[state=active]:shadow-[0_10px_25px_-18px_rgba(0,0,0,0.85)] [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:not([class*='size-'])]:size-4",
         className
       )}
       {...props} />
@@ -54,7 +54,7 @@ function TabsContent({
   return (
     <TabsPrimitive.Content
       data-slot="tabs-content"
-      className={cn("flex-1 outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-lg", className)}
+      className={cn("flex-1 rounded-[calc(var(--radius)+2px)] outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background", className)}
       {...props} />
   );
 }

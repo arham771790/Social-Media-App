@@ -1,26 +1,25 @@
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva } from "class-variance-authority";
-import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
-  "inline-flex items-center justify-center rounded-full border px-2.5 py-1 text-xs font-medium w-fit whitespace-nowrap shrink-0 [&>svg]:size-3 gap-1.5 [&>svg]:pointer-events-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive transition-all duration-200 overflow-hidden shadow-sm hover:shadow-md",
+  "inline-flex w-fit shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold tracking-[0.04em] [&>svg]:size-3 [&>svg]:pointer-events-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background transition-[border-color,background-color,color,box-shadow,transform] duration-200 overflow-hidden shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]",
   {
     variants: {
       variant: {
         default:
-          "border-transparent bg-primary text-primary-foreground [a&]:hover:bg-primary/90 shadow-sm",
+          "border-primary/20 bg-primary/14 text-primary [a&]:hover:bg-primary/18",
         secondary:
-          "border-transparent bg-secondary text-secondary-foreground [a&]:hover:bg-secondary/90 shadow-sm",
+          "border-border/70 bg-secondary/80 text-secondary-foreground [a&]:hover:border-primary/20 [a&]:hover:bg-secondary",
         destructive:
-          "border-transparent bg-destructive text-destructive-foreground [a&]:hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60 shadow-sm",
+          "border-destructive/25 bg-destructive/12 text-destructive [a&]:hover:bg-destructive/16 focus-visible:ring-destructive/20",
         outline:
-          "text-foreground border-border bg-background [a&]:hover:bg-accent [a&]:hover:text-accent-foreground shadow-sm",
-        success: "border-transparent bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100 shadow-sm",
-        warning: "border-transparent bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-100 shadow-sm",
-        info: "border-transparent bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100 shadow-sm",
+          "border-border/75 bg-background/40 text-foreground [a&]:hover:border-primary/25 [a&]:hover:bg-accent/90",
+        success: "border-emerald-500/20 bg-emerald-500/12 text-emerald-300",
+        warning: "border-amber-500/20 bg-amber-500/12 text-amber-300",
+        info: "border-sky-500/20 bg-sky-500/12 text-sky-300",
       },
     },
     defaultVariants: {
