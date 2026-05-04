@@ -9,6 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useAuthStore } from '@/store/authStore';
 import { useToast } from '@/hooks/use-toast';
+import OAuthButtons from '@/components/auth/OAuthButtons';
+
 
 export default function LoginPage() {
   const router = useRouter();
@@ -111,6 +113,11 @@ export default function LoginPage() {
               {isLoading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
+
+          <div className="mt-6">
+            <OAuthButtons />
+          </div>
+
 
           <div className="mt-6 space-y-4">
             <div className="text-center">

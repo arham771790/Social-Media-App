@@ -15,10 +15,13 @@ export default function TagPage() {
   const sp = useSearchParams();
   const page = parseInt(sp.get('page') || '1', 10);
 
-  // If someone hits /explore/tags/"" or "undefined", show index instead
+  useEffect(() => {
+    if (!tag || tag === '""' || tag === 'undefined') {
+      router.replace('/explore');
+    }
+  }, [tag, router]);
+
   if (!tag || tag === '""' || tag === 'undefined') {
-    // Redirect to tags index (we’ll use /explore to show top tags)
-    if (typeof window !== 'undefined') router.replace('/explore');
     return null;
   }
 

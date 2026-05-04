@@ -29,7 +29,7 @@ export default function ProfilePage() {
   const { me, fetchMe, updateMe, isLoading: meLoading } = useUserStore();
 
   // POSTS (byAuthor + fetchByAuthor are supported in your postStore)
-  const { byAuthor, fetchByAuthor } = usePostStore();
+  const { byAuthor, fetchByAuthor, bookmarks: bookmarksPack, fetchBookmarks } = usePostStore();
 
   // SOCIAL - Fixed method names to match store
   const {
@@ -50,6 +50,7 @@ export default function ProfilePage() {
   const meId = me?.id ? String(me.id) : '';
   const postsPack = meId ? byAuthor[meId] : null;
   const posts = postsPack?.items || [];
+  const bookmarkedPosts = bookmarksPack?.items || [];
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -78,11 +79,12 @@ export default function ProfilePage() {
   useEffect(() => {
     if (meId) {
       fetchByAuthor(meId, { page: 1, limit: 24 }).catch(() => {});
+      fetchBookmarks({ page: 1, limit: 24 }).catch(() => {});
       // Fixed: using correct method names
       getFollowers?.(meId, { page: 1, limit: 24 });
       getFollowing?.(meId, { page: 1, limit: 24 });
     }
-  }, [meId, fetchByAuthor, getFollowers, getFollowing]);
+  }, [meId, fetchByAuthor, fetchBookmarks, getFollowers, getFollowing]);
 
   // Init edit form from me
   useEffect(() => {
@@ -386,6 +388,13 @@ export default function ProfilePage() {
               <span className="hidden sm:inline">Following</span>
             </TabsTrigger>
             <TabsTrigger 
+              value="bookmarks" 
+              className="flex items-center gap-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary transition-all duration-200"
+            >
+              <Heart className="w-4 h-4" />
+              <span className="hidden sm:inline">Saved</span>
+            </TabsTrigger>
+            <TabsTrigger 
               value="about" 
               className="flex items-center gap-2 data-[state=active]:bg-primary/10 data-[state=active]:text-primary transition-all duration-200"
             >
@@ -467,6 +476,29 @@ export default function ProfilePage() {
                 />
               </div>
             </Card>
+          </TabsContent>
+
+          {/* BOOKMARKS */}
+          <TabsContent value="bookmarks" className="mt-8">
+            <PostGrid
+              items={bookmarkedPosts}
+              emptyMessage="No saved posts"
+              isLoading={bookmarksPack?.isLoading || false}
+            />
+            {bookmarksPack?.hasMore && (
+              <div className="text-center mt-8">
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    fetchBookmarks({ page: (bookmarksPack.page || 0) + 1, limit: 24 })
+                  }
+                  disabled={bookmarksPack.isLoading}
+                  className="hover:bg-primary/10 hover:text-primary hover:border-primary/30"
+                >
+                  {bookmarksPack.isLoading ? 'Loading...' : 'Load More'}
+                </Button>
+              </div>
+            )}
           </TabsContent>
 
           {/* ABOUT */}

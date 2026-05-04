@@ -60,7 +60,7 @@ export default function MainLayout({ children }) {
             <header className="sticky top-0 z-50 bg-black/95 backdrop-blur border-b border-gray-800 px-4 py-3">
               <div className="flex items-center justify-between">
                 <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
-                  Instagram
+                  Instopedia
                 </h1>
                 <div className="flex items-center space-x-4" />
               </div>

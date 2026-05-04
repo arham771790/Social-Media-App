@@ -12,9 +12,7 @@ export default function AuthLayout({ children }) {
     hydrate(); // load token/user from localStorage on mount
   }, [hydrate]);
 
-  useEffect(() => {
-    if (!isLoading && isAuthenticated) router.push('/feed');
-  }, [isAuthenticated, isLoading, router]);
+  // Middleware handles the redirect if authenticated
 
   if (isLoading) {
     return (

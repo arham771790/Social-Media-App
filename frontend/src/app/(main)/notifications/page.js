@@ -4,9 +4,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { format, formatDistanceToNow, isToday, isYesterday } from "date-fns";
-import { useNotificationStore } from "@/store/notificationStore";
 import { useAuthStore } from "@/store/authStore";
 import { useSocialStore } from "@/store/socialStore";
+import { useNotifications } from "@/hooks/useNotifications";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -142,41 +142,32 @@ function useInView(callback, options = { threshold: 0.6 }) {
 export default function NotificationsPage() {
   const { user } = useAuthStore();
   const {
-    items,
+    notifications: items,
     unreadCount,
     isLoading,
+    isError,
     error,
-    pagination,
-    fetchNotifications,
+    hasNextPage: hasMore,
+    isFetchingNextPage: loadingMore,
+    fetchNextPage,
     markRead,
     markAllRead,
-    bindSocket,
-  } = useNotificationStore();
+    refetch,
+  } = useNotifications(20);
 
   // Filters & search
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("ALL"); // ALL | UNREAD | REQUESTS | LIKES | COMMENTS | FOLLOWS | OTHER
-  const [loadingMore, setLoadingMore] = useState(false);
 
-  // initial fetch + socket
-  useEffect(() => {
-    fetchNotifications({ page: 1, limit: 20 });
-    bindSocket();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // No manual fetch/bind needed, handled in hook
 
   // Infinite scroll: sentinel
   const sentinelRef = useRef(null);
-  const onReachBottom = useCallback(async () => {
-    if (loadingMore) return;
-    if (pagination.page >= pagination.pages) return;
-    setLoadingMore(true);
-    try {
-      await fetchNotifications({ page: pagination.page + 1, limit: pagination.limit });
-    } finally {
-      setLoadingMore(false);
+  const onReachBottom = useCallback(() => {
+    if (hasMore && !loadingMore) {
+      fetchNextPage();
     }
-  }, [loadingMore, pagination, fetchNotifications]);
+  }, [hasMore, loadingMore, fetchNextPage]);
 
   const setSentinel = useInView(() => onReachBottom(), { threshold: 0.1 });
 
@@ -223,10 +214,8 @@ export default function NotificationsPage() {
   }, [filtered]);
 
   const onMarkAll = async () => {
-    await markAllRead();
+    markAllRead();
   };
-
-  const hasMore = pagination.page < pagination.pages;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
@@ -324,7 +313,7 @@ export default function NotificationsPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => fetchNotifications({ page: 1, limit: 20 })}
+                  onClick={() => refetch()}
                   className="border-destructive/30 hover:bg-destructive/10"
                 >
                   Try again
@@ -378,7 +367,7 @@ export default function NotificationsPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => fetchNotifications({ page: pagination.page + 1, limit: pagination.limit })}
+                  onClick={() => fetchNextPage()}
                   disabled={loadingMore}
                   className="hover:bg-primary/10 hover:text-primary hover:border-primary/30"
                 >

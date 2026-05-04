@@ -1,45 +1,15 @@
-'use client';
-
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Copy, Check, Sparkles } from 'lucide-react';
-import { useAuthStore } from '@/store/authStore';
+import { Sparkles } from 'lucide-react';
+import AuthRedirect from '@/components/home/AuthRedirect';
+import CredentialsCard from '@/components/home/CredentialsCard';
 
 export default function HomePage() {
-  const router = useRouter();
-  const { isAuthenticated, isLoading, hydrate } = useAuthStore();
-  const [copiedField, setCopiedField] = useState(null);
-
-  // load token/user on first mount
-  useEffect(() => {
-    hydrate();
-  }, [hydrate]);
-
-  // redirect if already logged in
-  useEffect(() => {
-    if (!isLoading && isAuthenticated) router.push('/feed');
-  }, [isAuthenticated, isLoading, router]);
-
-  const copyToClipboard = (text, field) => {
-    navigator.clipboard.writeText(text);
-    setCopiedField(field);
-    setTimeout(() => setCopiedField(null), 2000);
-  };
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-lg">Loading...</div>
-      </div>
-    );
-  }
-
-  if (isAuthenticated) return null; // redirecting
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-blue-900 text-white relative overflow-hidden">
+      {/* 🚀 Auth Logic handled in isolated Client Component */}
+      <AuthRedirect />
+
       {/* Animated background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-blue-500/10 to-transparent rounded-full blur-3xl animate-pulse"></div>
@@ -61,51 +31,8 @@ export default function HomePage() {
             </p>
           </div>
 
-          {/* Test Credentials Card */}
-          <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6 shadow-2xl">
-            <div className="flex items-center justify-center space-x-2 mb-4">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <h3 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">
-                Test Account Available
-              </h3>
-            </div>
-            
-            <div className="space-y-3">
-              <div className="flex items-center justify-between bg-black/30 rounded-lg p-3 group hover:bg-black/50 transition-all">
-                <div className="text-left flex-1">
-                  <div className="text-xs text-gray-500 mb-1">Email</div>
-                  <div className="text-sm font-mono text-blue-400">test123@gmail.com</div>
-                </div>
-                <button
-                  onClick={() => copyToClipboard('test123@gmail.com', 'email')}
-                  className="ml-3 p-2 hover:bg-gray-700 rounded-lg transition-colors"
-                >
-                  {copiedField === 'email' ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 group-hover:text-white" />
-                  )}
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between bg-black/30 rounded-lg p-3 group hover:bg-black/50 transition-all">
-                <div className="text-left flex-1">
-                  <div className="text-xs text-gray-500 mb-1">Password</div>
-                  <div className="text-sm font-mono text-blue-400">Password</div>
-                </div>
-                <button
-                  onClick={() => copyToClipboard('Password', 'password')}
-                  className="ml-3 p-2 hover:bg-gray-700 rounded-lg transition-colors"
-                >
-                  {copiedField === 'password' ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4 text-gray-400 group-hover:text-white" />
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
+          {/* 🔑 Interactive Credentials Card */}
+          <CredentialsCard />
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
