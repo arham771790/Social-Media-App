@@ -27,7 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/hooks/use-toast";
-import { useNotificationStore } from "@/store/notificationStore";
+import { useNotifications } from "@/hooks/useNotifications";
 
 const navigationItems = [
   { name: "Home", href: "/feed", icon: Home },
@@ -54,10 +54,8 @@ export default function Sidebar() {
   const { user, logout } = useAuthStore();
 
   // ✅ separate selectors to avoid new object snapshots
-  const unreadCount = useNotificationStore((s) => s.unreadCount) ?? 0;
-  const msgUnread   = useNotificationStore((s) => s.msgUnread) ?? 0;
-  const fetchNotifications = useNotificationStore((s) => s.fetchNotifications);
-  const bindSocket  = useNotificationStore((s) => s.bindSocket);
+  const { unreadCount } = useNotifications(20);
+  const msgUnread = 0; // Placeholder for messageStore unread if needed separately
 
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -67,17 +65,14 @@ export default function Sidebar() {
     try {
       const saved = localStorage.getItem(COLLAPSE_KEY);
       if (saved != null) setIsCollapsed(saved === "1");
-    } catch {}
-    fetchNotifications?.({ page: 1, limit: 20 }).catch(() => {});
-    bindSocket?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    } catch { }
   }, []);
 
   useEffect(() => {
     if (!mounted) return;
     try {
       localStorage.setItem(COLLAPSE_KEY, isCollapsed ? "1" : "0");
-    } catch {}
+    } catch { }
   }, [isCollapsed, mounted]);
 
   const handleLogout = async () => {
@@ -101,7 +96,7 @@ export default function Sidebar() {
           <Link href="/feed" className="flex items-center space-x-2 group">
             {!isCollapsed ? (
               <h1 className="text-xl font-bold bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent group-hover:from-purple-300 group-hover:via-pink-300 group-hover:to-blue-300 transition-all duration-300">
-                Instagram
+                Instopedia
               </h1>
             ) : (
               <div className="w-10 h-10 bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 rounded-xl flex items-center justify-center shadow-lg group-hover:shadow-purple-500/25 transition-all duration-300">
@@ -139,7 +134,7 @@ export default function Sidebar() {
                   className={cn(
                     "flex items-center px-3 py-3 rounded-xl text-gray-300 hover:text-white hover:bg-gray-800/50 transition-all duration-200 group",
                     active &&
-                      "text-white bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 shadow-lg shadow-purple-500/10"
+                    "text-white bg-gradient-to-r from-purple-600/20 to-pink-600/20 border border-purple-500/30 shadow-lg shadow-purple-500/10"
                   )}
                 >
                   <span className="relative inline-flex">

@@ -1,7 +1,7 @@
 'use client';
 import { useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Image, Video, Smile, X } from 'lucide-react';
+import { Image, Video, Smile, X, Sparkles, Wand2, Hash, Type } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -12,12 +12,21 @@ import { usePostStore } from '@/store/postStore';
 import { useFeedStore } from '@/store/feedStore';
 import { useAuthStore } from '@/store/authStore';
 import { useUploadStore } from '@/store/uploadStore';
+import { useAIStore } from '@/store/aiStore';
+import { toast } from 'react-hot-toast';
 
 export default function CreatePost() {
   const { user: currentUser } = useAuthStore();
   const { createPost, isLoading } = usePostStore();
   const { fetchHome, pagination } = useFeedStore();
   const { uploadFile, isUploading } = useUploadStore();
+  const { 
+    generateTags, 
+    suggestCaptions, 
+    suggestMediaAwareCaptions, 
+    titleFromContent,
+    isGenerating 
+  } = useAIStore();
 
   const fileInputRef = useRef(null);
 
@@ -43,8 +52,65 @@ export default function CreatePost() {
       setExpanded(true);
     } catch (err) {
       console.error(err);
+      toast.error("Upload failed");
     } finally {
       e.target.value = '';
+    }
+  };
+
+  const handleAISuggestCaption = async () => {
+    try {
+      let captions;
+      if (media?.optimizedUrl || media?.originalUrl) {
+        captions = await suggestMediaAwareCaptions(media.optimizedUrl || media.originalUrl);
+      } else if (content.trim()) {
+        captions = await suggestCaptions(content);
+      } else {
+        toast.error("Add some text or media first!");
+        return;
+      }
+      
+      if (captions?.[0]) {
+        setContent(captions[0]);
+        toast.success("Caption suggested!");
+      }
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleAIGenerateTags = async () => {
+    if (!content.trim()) {
+      toast.error("Add some text first!");
+      return;
+    }
+    try {
+      const suggestedTags = await generateTags(content);
+      if (suggestedTags?.length) {
+        setTags(prev => {
+          const combined = [...new Set([...prev, ...suggestedTags.map(t => t.toLowerCase())])];
+          return combined.slice(0, 5);
+        });
+        toast.success("Tags generated!");
+      }
+    } catch (err) {
+      toast.error(err.message);
+    }
+  };
+
+  const handleAIGenerateTitle = async () => {
+    if (!content.trim()) {
+      toast.error("Add some text first!");
+      return;
+    }
+    try {
+      const suggestedTitle = await titleFromContent(content);
+      if (suggestedTitle) {
+        setTitle(suggestedTitle);
+        toast.success("Title generated!");
+      }
+    } catch (err) {
+      toast.error(err.message);
     }
   };
 
@@ -63,16 +129,21 @@ export default function CreatePost() {
       type: media ? (media.fileType === 'video' ? 'VIDEO' : 'IMAGE') : 'TEXT',
     };
 
-    await createPost(payload);
-    await fetchHome({ page: 1, limit: pagination.limit });
+    try {
+      await createPost(payload);
+      toast.success("Post created!");
+      await fetchHome({ page: 1, limit: pagination.limit });
 
-    setContent('');
-    setTitle('');
-    setTags([]);
-    setTagInput('');
-    setMedia(null);
-    setMediaPreview(null);
-    setExpanded(false);
+      setContent('');
+      setTitle('');
+      setTags([]);
+      setTagInput('');
+      setMedia(null);
+      setMediaPreview(null);
+      setExpanded(false);
+    } catch (err) {
+      toast.error(err.message);
+    }
   };
 
   const handleTagAdd = (e) => {
@@ -108,13 +179,39 @@ export default function CreatePost() {
           </Avatar>
 
           <div className="flex-1 min-w-0">
-            <Textarea
-              placeholder="What's on your mind?"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              onFocus={() => setExpanded(true)}
-              className="min-h-[60px] resize-none border-0 p-0 text-base sm:text-lg placeholder:text-muted-foreground focus-visible:ring-0 bg-transparent"
-            />
+            <div className="relative group">
+              <Textarea
+                placeholder="What's on your mind?"
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                onFocus={() => setExpanded(true)}
+                className="min-h-[60px] resize-none border-0 p-0 text-base sm:text-lg placeholder:text-muted-foreground focus-visible:ring-0 bg-transparent mb-2"
+              />
+              {expanded && (
+                <div className="flex gap-2 mb-2">
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8 rounded-full hover:bg-primary/10 hover:text-primary"
+                    onClick={handleAISuggestCaption}
+                    disabled={isGenerating}
+                    title="AI Suggest Caption"
+                  >
+                    <Sparkles className={`w-4 h-4 ${isGenerating ? 'animate-pulse' : ''}`} />
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8 rounded-full hover:bg-primary/10 hover:text-primary"
+                    onClick={handleAIGenerateTags}
+                    disabled={isGenerating}
+                    title="AI Generate Tags"
+                  >
+                    <Hash className={`w-4 h-4 ${isGenerating ? 'animate-pulse' : ''}`} />
+                  </Button>
+                </div>
+              )}
+            </div>
 
             <AnimatePresence>
               {expanded && (
@@ -124,12 +221,24 @@ export default function CreatePost() {
                   exit={{ opacity: 0, height: 0 }}
                   className="mt-4 sm:mt-6 space-y-4"
                 >
-                  <Input
-                    placeholder="Add a title (optional)"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    className="text-base sm:text-lg font-medium border-2"
-                  />
+                  <div className="relative flex items-center gap-2">
+                    <Input
+                      placeholder="Add a title (optional)"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                      className="text-base sm:text-lg font-medium border-2 pr-10"
+                    />
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      className="absolute right-2 h-8 w-8 rounded-full hover:bg-primary/10 hover:text-primary"
+                      onClick={handleAIGenerateTitle}
+                      disabled={isGenerating}
+                      title="AI Generate Title"
+                    >
+                      <Type className={`w-4 h-4 ${isGenerating ? 'animate-pulse' : ''}`} />
+                    </Button>
+                  </div>
 
                   <div>
                     <div className="flex flex-wrap gap-2 mb-3">
@@ -236,7 +345,7 @@ export default function CreatePost() {
               </Button>
               <Button
                 onClick={handleSubmit}
-                disabled={isLoading || isUploading || (!content.trim() && !media)}
+                disabled={isLoading || isUploading || isGenerating || (!content.trim() && !media)}
                 size="sm"
                 variant="gradient"
                 className="transition-all duration-200 hover:scale-105"

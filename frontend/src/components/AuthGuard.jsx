@@ -11,19 +11,15 @@ import { Skeleton } from '@/components/ui/skeleton'
  */
 export default function AuthGuard({ children }) {
   const router = useRouter()
-  const { isAuthenticated, isLoading, checkAuth } = useAuthStore()
+  const { isAuthenticated, isLoading, checkAuth, hydrate } = useAuthStore()
 
   useEffect(() => {
-    // Check authentication status on mount
+    // Hydrate from localStorage then check authentication status
+    hydrate()
     checkAuth()
-  }, [checkAuth])
+  }, [hydrate, checkAuth])
 
-  useEffect(() => {
-    // Redirect to login if not authenticated
-    if (!isLoading && !isAuthenticated) {
-      router.push('/login')
-    }
-  }, [isAuthenticated, isLoading, router])
+  // Middleware handles the redirect if not authenticated
 
   // Show loading skeleton while checking auth
   if (isLoading) {

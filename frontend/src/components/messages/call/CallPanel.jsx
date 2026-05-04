@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { PhoneOff, Video as VideoIcon, Mic, MicOff } from "lucide-react";
-import { getSocket, sendOffer, sendAnswer, sendCandidate, endCall } from "@/lib/socket";
+import { socketManager } from "@/lib/socketManager";
 import { useAuthStore } from "@/store/authStore";
 import { useMessageStore } from "@/store/messageStore";
 
@@ -25,8 +25,8 @@ export default function CallPanel({ open, onOpenChange, roomId, mode = "audio" }
   const isVideo = mode === "video";
 
   const cleanup = () => {
-    try { localStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch {}
-    try { pcRef.current?.close(); } catch {}
+    try { localStreamRef.current?.getTracks().forEach((t) => t.stop()); } catch { }
+    try { pcRef.current?.close(); } catch { }
     localStreamRef.current = null;
     pcRef.current = null;
     setConnected(false);
@@ -51,7 +51,7 @@ export default function CallPanel({ open, onOpenChange, roomId, mode = "audio" }
     };
 
     pc.onicecandidate = (e) => {
-      if (e.candidate) sendCandidate(roomId, e.candidate.toJSON(), { id: me?.id });
+      if (e.candidate) socketManager.sendCandidate(roomId, e.candidate.toJSON(), { id: me?.id });
     };
     pc.ontrack = (e) => {
       if (remoteRef.current) remoteRef.current.srcObject = e.streams[0];
@@ -65,12 +65,12 @@ export default function CallPanel({ open, onOpenChange, roomId, mode = "audio" }
 
       const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: isVideo });
       await pc.setLocalDescription(offer);
-      sendOffer(roomId, offer, { id: me?.id });
+      socketManager.sendOffer(roomId, offer, { id: me?.id });
       setMicOn(true);
       setCamOn(isVideo);
     };
 
-    const s = getSocket();
+    const s = socketManager.getSocket();
 
     const onOffer = async ({ sdp }) => {
       if (!pcRef.current) return;
@@ -81,7 +81,7 @@ export default function CallPanel({ open, onOpenChange, roomId, mode = "audio" }
       stream.getTracks().forEach((t) => pcRef.current.addTrack(t, stream));
       const answer = await pcRef.current.createAnswer();
       await pcRef.current.setLocalDescription(answer);
-      sendAnswer(roomId, answer, { id: me?.id });
+      socketManager.sendAnswer(roomId, answer, { id: me?.id });
       setMicOn(true);
       setCamOn(isVideo);
     };
@@ -93,7 +93,7 @@ export default function CallPanel({ open, onOpenChange, roomId, mode = "audio" }
 
     const onCandidate = async ({ candidate }) => {
       if (!pcRef.current || !candidate) return;
-      try { await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
+      try { await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate)); } catch { }
     };
 
     const onEnd = async ({ reason }) => {
@@ -114,7 +114,7 @@ export default function CallPanel({ open, onOpenChange, roomId, mode = "audio" }
 
     // If we just opened from the caller side (ring was already emitted before panel opens),
     // produce the first offer:
-    startAsCaller().catch(() => {});
+    startAsCaller().catch(() => { });
 
     return () => {
       s.off("call:offer", onOffer);
@@ -138,7 +138,7 @@ export default function CallPanel({ open, onOpenChange, roomId, mode = "audio" }
   };
 
   const hangUp = async () => {
-    endCall(roomId, "user_end");
+    socketManager.endCall(roomId, "user_end");
     await logCall(roomId, { status: connected ? "ENDED" : "MISSED", mode, actor: "self" });
     onOpenChange?.(false);
   };
@@ -160,7 +160,7 @@ export default function CallPanel({ open, onOpenChange, roomId, mode = "audio" }
             <div className={["relative overflow-hidden rounded-lg ring-1 ring-border/60 bg-black",
               isVideo ? "aspect-video" : "h-36 sm:h-40 grid place-items-center"].join(" ")}>
               <video ref={localRef} autoPlay muted playsInline
-                     className={["w-full h-full object-cover", isVideo ? "" : "hidden"].join(" ")} />
+                className={["w-full h-full object-cover", isVideo ? "" : "hidden"].join(" ")} />
               {!isVideo && (
                 <div className="text-white/80 text-sm flex items-center gap-2">
                   <Mic className="w-4 h-4" /> Your microphone is active
@@ -184,13 +184,13 @@ export default function CallPanel({ open, onOpenChange, roomId, mode = "audio" }
 
           <div className="mt-4 sm:mt-5 flex items-center justify-center gap-2 sm:gap-3">
             <Button variant="outline" size="sm" className="rounded-full backdrop-blur-sm bg-white/60 border-border/60"
-                    onClick={toggleMic} title={micOn ? "Mute microphone" : "Unmute microphone"}>
+              onClick={toggleMic} title={micOn ? "Mute microphone" : "Unmute microphone"}>
               {micOn ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
             </Button>
 
             {isVideo && (
               <Button variant="outline" size="sm" className="rounded-full backdrop-blur-sm bg-white/60 border-border/60"
-                      onClick={toggleCam} title={camOn ? "Turn camera off" : "Turn camera on"}>
+                onClick={toggleCam} title={camOn ? "Turn camera off" : "Turn camera on"}>
                 <VideoIcon className="w-4 h-4" />
               </Button>
             )}

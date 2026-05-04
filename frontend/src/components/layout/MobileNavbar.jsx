@@ -14,7 +14,7 @@ import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuthStore } from "@/store/authStore";
-import { useNotificationStore } from "@/store/notificationStore";
+import { useNotifications } from "@/hooks/useNotifications";
 
 // helper: nested path check
 const isActivePath = (pathname, href) => {
@@ -37,18 +37,13 @@ export default function MobileNavbar() {
   const { user, logout } = useAuthStore();
 
   // ✅ use separate selectors to avoid new object snapshots
-  const notifUnread = useNotificationStore((s) => s.unreadCount) ?? 0;
-  const msgUnread   = useNotificationStore((s) => s.msgUnread) ?? 0; // adjust to your store
-  const bindSocket  = useNotificationStore((s) => s.bindSocket);
-  const fetchNotifications = useNotificationStore((s) => s.fetchNotifications);
+  const { unreadCount: notifUnread } = useNotifications(20);
+  const msgUnread = 0; // Placeholder for messageStore unread if needed separately
 
   // mount-safe (avoid hydration mismatch)
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     setMounted(true);
-    fetchNotifications?.({ page: 1, limit: 20 }).catch(() => {});
-    bindSocket?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleLogout = async () => {

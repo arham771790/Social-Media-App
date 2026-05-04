@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import toast from "react-hot-toast";
 import { PhoneIncoming, Phone, PhoneOff, Video } from "lucide-react";
 import { useCallStore } from "@/store/callStore";
-import { getSocket } from "@/lib/socket";
+import { socketManager } from "@/lib/socketManager";
 import { Button } from "@/components/ui/button";
 
 export default function IncomingCallCenter() {
@@ -17,7 +17,7 @@ export default function IncomingCallCenter() {
   const audioRef = useRef(null);
 
   useEffect(() => {
-    const s = getSocket();
+    const s = socketManager.getSocket();
     if (!s) return;
 
     const onRing = ({ roomId, fromUser, mode = "audio" }) => {
@@ -80,8 +80,8 @@ export default function IncomingCallCenter() {
       // loop ringtone gently
       const playLoop = () => {
         try {
-          audioRef.current?.play().catch(() => {});
-        } catch {}
+          audioRef.current?.play().catch(() => { });
+        } catch { }
       };
       playLoop();
       const t = setInterval(playLoop, 3500);
@@ -90,7 +90,7 @@ export default function IncomingCallCenter() {
         clearInterval(t);
         try {
           audioRef.current && (audioRef.current.pause(), (audioRef.current.currentTime = 0));
-        } catch {}
+        } catch { }
       };
 
       // stop on accept/decline/end
