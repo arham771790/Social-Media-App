@@ -1,25 +1,18 @@
 import express from "express";
 import { auth } from "../middlewares/auth.js";
-import {
-  getNotifications,
-  getUnreadCount,
-  sendNotification,
-  markAsRead,
-  markBulkAsRead,
-  markAllAsRead, // ← new
-} from "../controllers/notificationController.js";
+import notificationController from "../controllers/notificationController.js";
 
 const router = express.Router();
 router.use(auth);
 
-router.get("/", getNotifications);
-router.get("/unread-count", getUnreadCount);
-router.post("/", sendNotification);
-router.post("/:id/read", markAsRead);
-router.post("/read-bulk", markBulkAsRead);
+router.get("/", notificationController.getNotifications);
+router.get("/unread-count", notificationController.getUnreadCount);
+router.post("/", notificationController.sendNotification);
+router.post("/:id/read", notificationController.markAsRead);
+router.post("/read-bulk", notificationController.markBulkAsRead);
 
-// ✅ aliases your frontend already calls
-router.post("/mark-all-read", markAllAsRead);
-router.post("/read-all", markAllAsRead);
+// Aliases
+router.post("/mark-all-read", notificationController.markAllAsRead);
+router.post("/read-all", notificationController.markAllAsRead);
 
 export default router;

@@ -1,43 +1,34 @@
 // src/routes/socialRoutes.js
 import express from "express";
 import { auth } from "../middlewares/auth.js";
-import {
-  followUser,
-  unfollowUser,
-  acceptFollowRequest,
-  declineFollowRequest,
-  getFollowers,
-  getFollowing,
-  getContacts,
-  addContact,
-  createStory,
-  getStories,
-  deleteStory,
-  getFollowRequests,
-} from "../controllers/socialController.js";
+import socialController from "../controllers/socialController.js";
 
 const router = express.Router();
+// stories (public)
+router.get("/stories", socialController.getStories);
+
 router.use(auth);
 
 // follow / unfollow
-router.post("/users/:id/follow", followUser);
-router.delete("/users/:id/unfollow", unfollowUser);
+router.post("/users/:id/follow", socialController.followUser);
+router.delete("/users/:id/unfollow", socialController.unfollowUser);
 
 // requests
-router.get("/requests", getFollowRequests);                   // ?direction=incoming|outgoing
-router.post("/requests/:followerId/accept", acceptFollowRequest);
-router.post("/requests/:followerId/decline", declineFollowRequest);
+router.get("/requests", socialController.getFollowRequests);
+router.post("/requests/:followerId/accept", socialController.acceptFollowRequest);
+router.post("/requests/:followerId/decline", socialController.declineFollowRequest);
 
 // lists
-router.get("/users/:id/followers", getFollowers);
-router.get("/users/:id/following", getFollowing);
+router.get("/users/:id/followers", socialController.getFollowers);
+router.get("/users/:id/following", socialController.getFollowing);
 
-// contacts (optional)
-router.get("/contacts", getContacts);
-router.post("/contacts/:id", addContact);
+// contacts
+router.get("/contacts", socialController.getContacts);
+router.post("/contacts/:id", socialController.addContact);
 
-// stories (optional)
-router.post("/stories", createStory);
-router.get("/stories/:id?", getStories);
-router.delete("/stories/:storyId", deleteStory); // ⬅️ new
+// stories (actions & specific user)
+router.post("/stories", socialController.createStory);
+router.get("/stories/:id", socialController.getStories);
+router.delete("/stories/:storyId", socialController.deleteStory);
+
 export default router;

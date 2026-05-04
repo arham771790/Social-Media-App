@@ -1,23 +1,24 @@
-// controllers/healthController.js
 import fs from 'fs';
 import path from 'path';
-import prisma from "../utils/db.js";
+import prisma from '../utils/db.js';
+import { StatusCodes } from 'http-status-codes';
+import catchAsync from '../utils/catchAsync.js';
 
 const pkgPath = path.resolve('package.json');
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
 
-export const health = async (req, res) => {
-  const start = Date.now();
-  try {
+class HealthController {
+  health = catchAsync(async (req, res, next) => {
+    const start = Date.now();
     await prisma.$queryRaw`SELECT 1`;
-    res.json({
+    res.status(StatusCodes.OK).json({
       status: "ok",
       db: "up",
       version: pkg.version || "unknown",
       uptimeSeconds: Math.floor(process.uptime()),
       responseMs: Date.now() - start
     });
-  } catch (err) {
-    res.status(500).json({ status: "error", db: "down", error: err.message });
-  }
-};
+  });
+}
+
+export default new HealthController();

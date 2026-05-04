@@ -1,131 +1,108 @@
-  // app.js
-  import express from "express";
-  import cors from "cors";
-  import dotenv from "dotenv";
-  import passport from "./utils/oauthConfig.js";
+import express from "express";
+import cors from "cors";
+import passport from "./utils/oauthConfig.js";
+import swaggerUi from "swagger-ui-express";
+import YAML from "yamljs";
+import rateLimit from "express-rate-limit";
+import helmet from "helmet";
+import { StatusCodes } from "http-status-codes";
 
-  import authRoutes from "./routes/authRoutes.js";
-  import userRoutes from "./routes/userRoutes.js";
-  import postRoutes from "./routes/postRoutes.js";
-  import commentRoutes from "./routes/commentRoutes.js";
-  import tagRoutes from "./routes/tagRoutes.js";
-  import socialRoutes from "./routes/socialRoutes.js";
-  import uploadRoutes from "./routes/uploadRoutes.js";
-  import messageRoutes from "./routes/messageRoutes.js";
-  import notificationRoutes from "./routes/notificationRoutes.js";
-  import aiRoutes from "./routes/aiRoutes.js";
-  import feedRoutes from "./routes/feedRoutes.js";
-  import healthRoutes from "./routes/healthRoutes.js";
-  import discoverRoutes from "./routes/discoverRoutes.js";
-  import exploreRoutes from "./routes/exploreRoutes.js";
-  import verifyRoutes from "./routes/verifyRoutes.js";
-  // import rtcRoutes from "./routes/rtcRoutes.js"; // optional
+import { config, getAllowedOrigins, isOriginAllowed } from "./utils/config.js";
+import { requestTracingMiddleware, requestLogger } from "./middlewares/requestLogger.js";
+import { errorHandler } from "./middlewares/errorHandler.js";
+import { AppError, ErrorCodes } from "./errors/AppError.js";
+import logger from "./utils/logger.js";
 
-  import swaggerUi from "swagger-ui-express";
-  import YAML from "yamljs";
-  import { errorHandler } from "./middlewares/error.js";
+import authRoutes from "./routes/authRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
+import postRoutes from "./routes/postRoutes.js";
+import commentRoutes from "./routes/commentRoutes.js";
+import tagRoutes from "./routes/tagRoutes.js";
+import socialRoutes from "./routes/socialRoutes.js";
+import uploadRoutes from "./routes/uploadRoutes.js";
+import messageRoutes from "./routes/messageRoutes.js";
+import notificationRoutes from "./routes/notificationRoutes.js";
+import aiRoutes from "./routes/aiRoutes.js";
+import feedRoutes from "./routes/feedRoutes.js";
+import healthRoutes from "./routes/healthRoutes.js";
+import discoverRoutes from "./routes/discoverRoutes.js";
+import exploreRoutes from "./routes/exploreRoutes.js";
+import verifyRoutes from "./routes/verifyRoutes.js";
 
-  dotenv.config();
+const app = express();
 
-  const app = express();
+app.use(helmet());
 
-  /* -------------------------------------------------------
-    CORS configuration (normalized + wildcard support)
-  -------------------------------------------------------- */
-  const parseOrigins = (raw) =>
-    (raw || "")
-      .split(",")
-      .map((o) => o.trim())
-      .filter(Boolean)
-      .map((o) => o.replace(/\/+$/, "")); // strip trailing slash(es)
+// Global Rate Limiting
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10000, // increased for dev
+  message: "Too many requests from this IP, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(globalLimiter);
 
-  const allowedOriginsList = parseOrigins(process.env.CORS_ORIGINS || "");
+// Auth Rate Limiting (Brute-force protection)
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 1000, // increased for dev
+  message: "Too many login/register attempts, please try again after an hour.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
-  // In non-production, also allow local Next.js dev servers
-  if (process.env.NODE_ENV !== "production") {
-    for (const dev of ["http://localhost:3000", "http://127.0.0.1:3000"]) {
-      if (!allowedOriginsList.includes(dev)) allowedOriginsList.push(dev);
-    }
-  }
 
-  const wildcardToRegExp = (pattern) => {
-    const escaped = pattern
-      .replace(/[-/\\^$+?.()|[\]{}]/g, "\\$&")
-      .replace(/\\\*/g, ".*");
-    return new RegExp(`^${escaped}$`);
-  };
+app.use(requestTracingMiddleware);
+app.use(requestLogger);
 
-  const wildcardOrigins = allowedOriginsList
-    .filter((o) => o.includes("*"))
-    .map(wildcardToRegExp);
+const allowedOriginsList = getAllowedOrigins();
 
-  const staticOrigins = allowedOriginsList.filter((o) => !o.includes("*"));
+const corsOptions = {
+  origin(origin, callback) {
+    if (isOriginAllowed(origin, allowedOriginsList)) return callback(null, true);
+    logger.warn(`CORS blocked: ${origin}`);
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  maxAge: 600, // cache preflight for 10 minutes
+};
 
-  const isOriginAllowed = (origin) => {
-    if (!origin) return true; // Postman / server-to-server / health checks
-    const cleaned = origin.replace(/\/+$/, "");
-    return (
-      staticOrigins.includes(cleaned) ||
-      wildcardOrigins.some((re) => re.test(cleaned))
-    );
-  };
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
-  const corsOptions = {
-    origin(origin, callback) {
-      if (isOriginAllowed(origin)) return callback(null, true);
-      console.warn(`CORS blocked: ${origin}`);
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-    maxAge: 600, // cache preflight for 10 minutes
-  };
+app.use(express.json({ limit: "1mb" }));
+app.use(passport.initialize());
 
-  app.use(cors(corsOptions));
-  app.options("*", cors(corsOptions));
+app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api", feedRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/posts", postRoutes);
+app.use("/api", commentRoutes);
+app.use("/api/tags", tagRoutes);
+app.use("/api/social", socialRoutes);
+app.use("/api/upload", uploadRoutes);
+app.use("/api", messageRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/ai", aiRoutes);
+app.use("/api/health", healthRoutes);
+app.use("/api/explore", exploreRoutes);
+app.use("/api/discover", discoverRoutes);
+app.use("/api/auth", verifyRoutes);
 
-  /* -------------------------------------------------------
-    Express setup
-  -------------------------------------------------------- */
-  app.use(express.json({ limit: "1mb" }));
-  app.use(passport.initialize());
+try {
+  const swaggerDocument = YAML.load("./swagger.yaml");
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+} catch (err) {
+  logger.warn("⚠️ Swagger not loaded:", { error: err.message });
+}
 
-  /* -------------------------------------------------------
-    Routes
-  -------------------------------------------------------- */
-  app.use("/api/auth", authRoutes);
-  app.use("/api/users", userRoutes);
-  app.use("/api/user", userRoutes);
-  app.use("/api/posts", postRoutes);
-  app.use("/api", feedRoutes);
-  app.use("/api", commentRoutes);
-  app.use("/api/tags", tagRoutes);
-  app.use("/api/social", socialRoutes);
-  app.use("/api/upload", uploadRoutes);
-  app.use("/api", messageRoutes);
-  app.use("/api/notifications", notificationRoutes);
-  app.use("/api/ai", aiRoutes);
-  app.use("/api/health", healthRoutes);
-  app.use("/api/explore", exploreRoutes);
-  app.use("/api/discover", discoverRoutes);
-  app.use("/api/auth", verifyRoutes);
-  // app.use("/api/rtc", rtcRoutes);
+app.use((req, res, next) => {
+  next(new AppError(`Can't find ${req.originalUrl} on this server!`, StatusCodes.NOT_FOUND, ErrorCodes.NOT_FOUND));
+});
 
-  /* -------------------------------------------------------
-    Swagger (optional)
-  -------------------------------------------------------- */
-  try {
-    const swaggerDocument = YAML.load("./swagger.yaml");
-    app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-  } catch (err) {
-    console.warn("⚠️ Swagger not loaded:", err.message);
-  }
+app.use(errorHandler);
 
-  /* -------------------------------------------------------
-    Error handling
-  -------------------------------------------------------- */
-  app.use((req, res) => res.status(404).json({ error: "Not found" }));
-  app.use(errorHandler);
-
-  export default app;
+export default app;

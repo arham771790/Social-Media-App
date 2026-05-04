@@ -1,29 +1,24 @@
 import { Router } from "express";
-import {
-  createPost,
-  getPosts,
-  getPost,
-  updatePost,
-  deletePost,
-  likePost,
-  bookmarkPost,
-  sharePost,
-  replyPost,
-  listByAuthor
-} from "../controllers/postController.js";
+import postController from "../controllers/postController.js";
 import { auth } from "../middlewares/auth.js";
 
 const router = Router();
 
-router.post("/", auth, createPost);
-router.get("/", getPosts);
-router.get("/by-author/:id", listByAuthor);
-router.get("/:id", auth, getPost);
-router.put("/:id", auth, updatePost);
-router.delete("/:id", auth, deletePost);
-router.post("/:id/like", auth, likePost);
-router.post("/:id/bookmark", auth, bookmarkPost);
-router.post("/:id/share", auth, sharePost);
-router.post("/:id/reply", auth, replyPost);
+// Public routes (with optional auth for personal state)
+router.get("/", auth, postController.getPosts);
+router.get("/by-author/:id", auth, postController.listByAuthor);
+router.get("/bookmarks", auth, postController.getBookmarks);
+router.get("/:id", auth, postController.getPost);
+
+// Protected routes
+router.post("/", auth, postController.createPost);
+router.put("/:id", auth, postController.updatePost);
+router.delete("/:id", auth, postController.deletePost);
+
+// Interactions
+router.post("/:id/like", auth, postController.likePost);
+router.post("/:id/bookmark", auth, postController.bookmarkPost);
+router.post("/:id/share", auth, postController.sharePost);
+router.post("/:id/reply", auth, postController.replyPost);
 
 export default router;

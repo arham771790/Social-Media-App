@@ -1,36 +1,22 @@
 import { Router } from "express";
-import { 
-  me, 
-  updateProfile, 
-  getUserProfile, 
-  searchUsers ,getUserByUsername
-} from "../controllers/userController.js";
-import { getSettings, updateSettings } from "../controllers/settingsController.js";
+import userController from "../controllers/userController.js";
 import { auth } from "../middlewares/auth.js";
 
 const router = Router();
 
-// Get own profile (JWT required)
-router.get("/me", auth, me);
+// Own profile
+router.get("/me", auth, userController.me);
+router.put("/me", auth, userController.updateProfile);
 
-// Update own profile (JWT required)
-router.put("/me", auth, updateProfile);
+// Own settings
+router.get("/me/settings", auth, userController.getSettings);
+router.put("/me/settings", auth, userController.updateSettings);
 
-// Search users
-router.get("/search", searchUsers);
+// Search
+router.get("/search", userController.searchUsers);
 
-// Get public profile of any user by ID
-router.get("/username/:username", getUserByUsername);
-
-router.get("/:id", getUserProfile);
-// Get public profile of any user by username
-
-
-
-// Get own settings (JWT required)
-router.get("/me/settings", auth, getSettings);
-
-// Update own settings (JWT required)
-router.put("/me/settings", auth, updateSettings);
+// Public profiles
+router.get("/username/:username", userController.getUserByUsername);
+router.get("/:id", userController.getUserProfile);
 
 export default router;

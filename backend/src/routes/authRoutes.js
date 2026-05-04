@@ -1,101 +1,50 @@
 // routes/authRoutes.js
 import { Router } from "express";
 import passport from "../utils/oauthConfig.js";
-import jwt from "jsonwebtoken";
-import {
-  register,
-  login,
-  logout,
-  forgotPassword,
-  resetPassword,
-  oauthCallback, // not used directly below (passport handlers inline), but exported if you prefer
-  testEmail,
-  testOAuth,
-} from "../controllers/authController.js";
-import { requestVerification,confirmVerification,registerWithVerifiedEmail } from "../controllers/verifyController.js";
+import authController from "../controllers/authController.js";
+import verifyController from "../controllers/verifyController.js";
+import { config } from "../utils/config.js";
+
 const router = Router();
 
 // Basic auth
-router.post("/register", register);
-router.post("/login", login);
-router.post("/logout", logout);
+router.post("/register", authController.register);
+router.post("/login", authController.login);
+router.post("/logout", authController.logout);
 
 // Password reset
-router.post("/forgot-password", forgotPassword);
-router.post("/reset-password", resetPassword);
+router.post("/forgot-password", authController.forgotPassword);
+router.post("/reset-password", authController.resetPassword);
 
 // Diagnostics
-router.post("/test-email", testEmail);
-router.get("/test-oauth", testOAuth);
+router.post("/test-email", authController.testEmail);
+router.get("/test-oauth", authController.testOAuth);
 
-// --- Email verification (no auth) ---;
-// public endpoints (no auth needed)
-router.post("/verify-email/request", requestVerification);
-router.post("/verify-email/confirm", confirmVerification);
-router.post("/register-verified", registerWithVerifiedEmail);
+// Email verification
+router.post("/verify-email/request", verifyController.requestVerification);
+router.post("/verify-email/confirm", verifyController.confirmVerification);
+router.post("/register-verified", verifyController.registerWithVerifiedEmail);
 
 // OAuth: Google
 router.get("/google", passport.authenticate("google", { scope: ["profile", "email"] }));
 router.get(
   "/google/callback",
   passport.authenticate("google", {
-    failureRedirect: `${process.env.FRONTEND_URL}/auth/error`,
+    failureRedirect: `${config.frontendUrl}/auth/error`,
     session: false,
   }),
-  (req, res) => {
-    try {
-      if (!req.user) {
-        return res.redirect(`${process.env.FRONTEND_URL}/auth/error`);
-      }
-      if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET is not configured");
-      const token = jwt.sign({ userId: req.user.id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-      const userData = {
-        id: req.user.id,
-        username: req.user.username,
-        email: req.user.email,
-        avatar: req.user.avatar,
-      };
-      const redirectUrl = `${process.env.FRONTEND_URL}/auth/callback?token=${token}&user=${encodeURIComponent(
-        JSON.stringify(userData)
-      )}`;
-      res.redirect(redirectUrl);
-    } catch (error) {
-      console.error("Google OAuth callback error:", error);
-      res.redirect(`${process.env.FRONTEND_URL}/auth/error`);
-    }
-  }
+  authController.oauthCallback
 );
 
-// OAuth: GitHub (if enabled)
+// OAuth: GitHub
 router.get("/github", passport.authenticate("github", { scope: ["user:email"] }));
 router.get(
   "/github/callback",
   passport.authenticate("github", {
-    failureRedirect: `${process.env.FRONTEND_URL}/auth/error`,
+    failureRedirect: `${config.frontendUrl}/auth/error`,
     session: false,
   }),
-  (req, res) => {
-    try {
-      if (!req.user) {
-        return res.redirect(`${process.env.FRONTEND_URL}/auth/error`);
-      }
-      if (!process.env.JWT_SECRET) throw new Error("JWT_SECRET is not configured");
-      const token = jwt.sign({ userId: req.user.id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-      const userData = {
-        id: req.user.id,
-        username: req.user.username,
-        email: req.user.email,
-        avatar: req.user.avatar,
-      };
-      const redirectUrl = `${process.env.FRONTEND_URL}/auth/callback?token=${token}&user=${encodeURIComponent(
-        JSON.stringify(userData)
-      )}`;
-      res.redirect(redirectUrl);
-    } catch (error) {
-      console.error("GitHub OAuth callback error:", error);
-      res.redirect(`${process.env.FRONTEND_URL}/auth/error`);
-    }
-  }
+  authController.oauthCallback
 );
 
 export default router;

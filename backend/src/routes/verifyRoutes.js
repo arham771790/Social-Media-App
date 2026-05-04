@@ -1,11 +1,11 @@
 import { Router } from "express";
-import { requestVerification, confirmVerification, registerWithVerifiedEmail } from "../controllers/verifyController.js";
+import verifyController from "../controllers/verifyController.js";
 
 const router = Router();
 
-// public endpoints (no auth needed)
-router.post("/verify/request", requestVerification);
-router.post("/verify/confirm", confirmVerification);
-router.post("/register-verified", registerWithVerifiedEmail);
+// public endpoints
+router.post("/verify/request", verifyController.requestVerification);
+router.post("/verify/confirm", verifyController.confirmVerification);
+router.post("/register-verified", verifyController.registerWithVerifiedEmail);
 
 export default router;

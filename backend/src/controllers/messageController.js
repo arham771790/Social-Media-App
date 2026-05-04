@@ -1,662 +1,153 @@
-// src/controllers/messageController.js
-import prisma from "../utils/db.js";
-import { StatusCodes } from "http-status-codes";
-import { io, isUserOnline } from "../server.js";
-import { createAndEmitNotification } from "./notificationController.js";
+import messageService from '../services/MessageService.js';
+import { StatusCodes } from 'http-status-codes';
+import { 
+  CreateDirectChatRequestSchema, 
+  CreateGroupChatRequestSchema, 
+  SendMessageRequestSchema,
+  ChatGroupResponseDto,
+  MessageResponseDto
+} from '../dtos/MessageDto.js';
+import { AppError, ErrorCodes } from '../errors/AppError.js';
+import { io } from '../server.js';
+import userRepository from '../repositories/UserRepository.js';
+import catchAsync from '../utils/catchAsync.js';
 
-/** Infer message type from media URL so UI can render appropriately. */
-const inferMessageType = (mediaUrl) => {
-  if (!mediaUrl) return "TEXT";
-  const s = String(mediaUrl).toLowerCase();
-  if (/\.(mp4|mov|mkv|webm)$/.test(s)) return "VIDEO";
-  if (/\.(png|jpg|jpeg|gif|webp)$/.test(s)) return "IMAGE";
-  return "FILE";
-};
-
-/** Confirm the requesting user belongs to the chatGroup. */
-const ensureMembership = async (chatGroupId, userId) => {
-  const row = await prisma.chatGroup.findFirst({
-    where: {
-      id: String(chatGroupId),
-      OR: [
-        { members: { some: { id: String(userId) } } },
-        { admins:  { some: { id: String(userId) } } },
-      ],
-    },
-    select: { id: true },
+class MessageController {
+  getChatThreads = catchAsync(async (req, res, next) => {
+    const { threads, totalUnread } = await messageService.getChatThreads(req.userId);
+    const result = threads.map(t => ChatGroupResponseDto(t, req.userId));
+    res.status(StatusCodes.OK).json({ threads: result, totalUnread });
   });
-  return !!row;
-};
 
-/* ---------------------------------------
-   THREADS (Sidebar)
----------------------------------------- */
-
-export const getChatThreads = async (req, res) => {
-  try {
-    const userId = req.userId;
-    if (!userId) return res.status(StatusCodes.UNAUTHORIZED).json({ error: "Unauthorized" });
-
-    const groups = await prisma.chatGroup.findMany({
-      where: {
-        OR: [
-          { members: { some: { id: userId } } },
-          { admins:  { some: { id: userId } } },
-        ],
-        archived: false,
-      },
-      include: {
-        members:  { select: { id: true, username: true, avatar: true } },
-        admins:   { select: { id: true } },
-        messages: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-          include: { sender: { select: { id: true, username: true, avatar: true } } },
-        },
-      },
-      orderBy: [{ lastActivityAt: "desc" }, { updatedAt: "desc" }, { createdAt: "desc" }],
-    });
-
-    const unreadCounts = await Promise.all(
-      groups.map((g) =>
-        prisma.message.count({
-          where: {
-            chatGroupId: g.id,
-            senderId: { not: userId },
-            readBy: { none: { id: userId } },
-          },
-        })
-      )
-    );
-
-    const threads = groups.map((g, i) => {
-      const last = g.messages[0] || null;
-      const others = g.members.filter((m) => m.id !== userId);
-      return {
-        id: g.id,
-        name: g.type === "DIRECT" ? (others[0]?.username ?? g.name) : g.name,
-        type: g.type, // DIRECT or GROUP
-        avatar: g.type === "DIRECT" ? (others[0]?.avatar ?? null) : (g.imageUrl ?? null),
-        lastMessage: last
-          ? {
-              id: last.id,
-              content: last.content,
-              type: last.type,
-              sender: last.sender,
-              timestamp: last.createdAt,
-            }
-          : null,
-        unread: unreadCounts[i] || 0,
-        members: g.members.map((m) => ({ id: m.id, username: m.username, avatar: m.avatar })),
-        adminIds: (g.admins || []).map(a => a.id),
-        createdAt: g.createdAt,
-      };
-    });
-
-    const totalUnread = unreadCounts.reduce((a, b) => a + b, 0);
-    return res.status(StatusCodes.OK).json({ threads, totalUnread });
-  } catch (err) {
-    console.error("getChatThreads error", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to get chat threads" });
-  }
-};
-
-export const getUnreadTotal = async (req, res) => {
-  try {
-    const userId = req.userId;
-    const total = await prisma.message.count({
-      where: { senderId: { not: userId }, readBy: { none: { id: userId } } },
-    });
+  getUnreadTotal = catchAsync(async (req, res, next) => {
+    const total = await messageService.getUnreadTotal(req.userId);
     res.status(StatusCodes.OK).json({ total });
-  } catch {
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to fetch unread count" });
-  }
-};
+  });
 
-/* -------------------------------
-   USER SEARCH + CREATE DM/GROUP
--------------------------------- */
-
-export const getMessageableUsers = async (req, res) => {
-  try {
-    const userId = req.userId;
+  getMessageableUsers = catchAsync(async (req, res, next) => {
     const { search } = req.query;
-
-    const where = { isPublic: true, id: { not: userId } };
+    const where = { isPublic: true, id: { not: req.userId } };
     if (search) where.username = { contains: search, mode: "insensitive" };
-
-    const users = await prisma.user.findMany({
-      where,
-      select: { id: true, username: true, avatar: true, bio: true },
-      orderBy: { username: "asc" },
+    
+    const users = await userRepository.findMany(where, { username: 'asc' }, 0, 50, { 
+        id: true, username: true, avatar: true, bio: true 
     });
-
     res.status(StatusCodes.OK).json(users);
-  } catch (err) {
-    console.error("getMessageableUsers error", err);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to get users" });
-  }
-};
+  });
 
-export const createDirectChat = async (req, res) => {
-  try {
-    const userId = req.userId;
-    const { targetUserId } = req.body;
-
-    if (!targetUserId) return res.status(StatusCodes.BAD_REQUEST).json({ error: "Target user ID is required" });
-    if (userId === targetUserId) return res.status(StatusCodes.BAD_REQUEST).json({ error: "Cannot chat with yourself" });
-
-    const target = await prisma.user.findUnique({
-      where: { id: targetUserId },
-      select: { id: true, username: true, avatar: true, isPublic: true },
-    });
-    if (!target) return res.status(StatusCodes.NOT_FOUND).json({ error: "User not found" });
-    if (!target.isPublic) return res.status(StatusCodes.FORBIDDEN).json({ error: "Cannot message private user" });
-
-    const [a, b] = [String(userId), String(targetUserId)].sort();
-    const directKey = `${a}:${b}`;
-
-    const existing = await prisma.chatGroup.findUnique({
-      where: { directKey },
-      include: { members: { select: { id: true, username: true, avatar: true } } },
-    });
-    if (existing) {
-      return res.status(StatusCodes.OK).json({
-        chatGroup: { id: existing.id, name: target.username, type: "DIRECT", avatar: target.avatar, members: existing.members },
-      });
+  createDirectChat = catchAsync(async (req, res, next) => {
+    const parsed = CreateDirectChatRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError(parsed.error.errors[0].message, StatusCodes.BAD_REQUEST, ErrorCodes.VALIDATION_ERROR);
     }
 
-    const created = await prisma.chatGroup.create({
-      data: {
-        type: "DIRECT",
-        directKey,
-        name: `Chat with ${target.username}`,
-        createdBy: { connect: { id: userId } },
-        members:   { connect: [{ id: userId }, { id: targetUserId }] },
-        lastActivityAt: new Date(),
-      },
-      include: { members: { select: { id: true, username: true, avatar: true } } },
+    const { chatGroup } = await messageService.createDirectChat(req.userId, parsed.data.targetUserId);
+    res.status(StatusCodes.CREATED).json({ 
+      chatGroup: ChatGroupResponseDto(chatGroup, req.userId) 
     });
+  });
 
-    res.status(StatusCodes.CREATED).json({
-      chatGroup: {
-        id: created.id,
-        name: target.username,
-        type: "DIRECT",
-        avatar: target.avatar,
-        members: created.members,
-      },
-    });
-  } catch (err) {
-    console.error("createDirectChat error", err);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to create direct chat" });
-  }
-};
-
-// controllers/message.controller.js
-
-// controllers/messageController.js
-export const createGroupChat = async (req, res) => {
-  try {
-    const { name, memberIds = [], description = "", imageUrl = null } = req.body;
-
-    // Validate
-    if (!name || !Array.isArray(memberIds) || memberIds.length < 2) {
-      return res.status(400).json({
-        error: "Group name and at least 2 members are required",
-      });
+  createGroupChat = catchAsync(async (req, res, next) => {
+    const parsed = CreateGroupChatRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError(parsed.error.errors[0].message, StatusCodes.BAD_REQUEST, ErrorCodes.VALIDATION_ERROR);
     }
 
-    // Ensure the creator is always a member
-    if (!memberIds.includes(req.userId)) {
-      memberIds.push(req.userId);
-    }
-
-    // Create the group chat (make creator an admin)
-    const groupChat = await prisma.chatGroup.create({
-      data: {
-        type: "GROUP",
-        name,
-        description,
-        imageUrl,
-        createdBy: { connect: { id: req.userId } },
-        members:   { connect: memberIds.map((id) => ({ id })) },
-        admins:    { connect: { id: req.userId } }, // ✅ creator is admin
-        lastActivityAt: new Date(),
-      },
-      include: {
-        members: true,
-        admins: true,
-        createdBy: true,
-      },
+    const groupChat = await messageService.createGroupChat(req.userId, parsed.data);
+    res.status(StatusCodes.CREATED).json({ 
+      chatGroup: ChatGroupResponseDto(groupChat, req.userId) 
     });
+  });
 
-    return res.status(201).json({
-      chatGroup: {
-        id: groupChat.id,
-        name: groupChat.name,
-        type: groupChat.type,
-        avatar: groupChat.imageUrl ?? null,
-        members: groupChat.members.map(m => ({ id: m.id, username: m.username, avatar: m.avatar })),
-        adminIds: (groupChat.admins || []).map(a => a.id),
-        createdAt: groupChat.createdAt,
-      },
-    });
-  } catch (error) {
-    console.error("createGroupChat error:", error);
-    return res.status(500).json({ error: "Internal Server Error" });
-  }
-};
-
-// Remove a member (admin-only)
-// Remove a member (admin-only for removing others; self-removal allowed)
-export const removeGroupMember = async (req, res) => {
-  try {
+  removeGroupMember = catchAsync(async (req, res, next) => {
     const { chatGroupId, memberId } = req.params;
-    const userId = req.userId;
+    await messageService.removeMember(req.userId, chatGroupId, memberId);
+    res.status(StatusCodes.OK).json({ ok: true });
+  });
 
-    const group = await prisma.chatGroup.findUnique({
-      where: { id: chatGroupId },
-      include: { admins: true },
-    });
-
-    if (!group) return res.status(404).json({ error: "Group not found" });
-
-    const isAdmin = !!group.admins.find((a) => a.id === userId);
-    const isSelf = String(memberId) === String(userId);
-
-    if (!isAdmin && !isSelf) {
-      return res.status(403).json({ error: "Only admins can remove other members" });
-    }
-
-    await prisma.chatGroup.update({
-      where: { id: chatGroupId },
-      data: { members: { disconnect: { id: memberId } }, admins: { disconnect: { id: memberId } } },
-    });
-
-    io.to(chatGroupId).emit("group:memberRemoved", { chatGroupId, memberId });
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("removeGroupMember error", err);
-    res.status(500).json({ error: "Failed to remove member" });
-  }
-};
-
-
-// Add new members (admin-only)
-export const addGroupMembers = async (req, res) => {
-  try {
+  addGroupMembers = catchAsync(async (req, res, next) => {
     const { chatGroupId } = req.params;
     const { memberIds } = req.body;
-    const userId = req.userId;
+    const updated = await messageService.addMembers(req.userId, chatGroupId, memberIds);
+    res.status(StatusCodes.OK).json(ChatGroupResponseDto(updated, req.userId));
+  });
 
-    const group = await prisma.chatGroup.findUnique({
-      where: { id: chatGroupId },
-      include: { admins: true },
-    });
-
-    if (!group) return res.status(404).json({ error: "Group not found" });
-    if (!group.admins.find((a) => a.id === userId)) {
-      return res.status(403).json({ error: "Only admins can add members" });
-    }
-
-    const updated = await prisma.chatGroup.update({
-      where: { id: chatGroupId },
-      data: { members: { connect: memberIds.map((id) => ({ id })) } },
-      include: { members: true },
-    });
-
-    io.to(chatGroupId).emit("group:membersAdded", { chatGroupId, memberIds });
-
-    res.json(updated);
-  } catch (err) {
-    console.error("addGroupMembers error", err);
-    res.status(500).json({ error: "Failed to add members" });
-  }
-};
-
-
-
-/* ----------------
-   MESSAGES (CRUD)
------------------ */
-
-export const getMessages = async (req, res) => {
-  try {
+  getMessages = catchAsync(async (req, res, next) => {
     const { chatGroupId } = req.params;
-    const userId = req.userId;
-    const limit  = Math.min(Math.max(parseInt(req.query.limit || "50", 10), 1), 100);
-    const before = req.query.before ? new Date(req.query.before) : null;
+    const { limit = 50, before } = req.query;
+    const { items, pageInfo } = await messageService.getMessages(
+        req.userId, 
+        chatGroupId, 
+        parseInt(limit), 
+        before
+    );
+    
+    const result = items.map(m => MessageResponseDto(m));
+    res.status(StatusCodes.OK).json({ items: result, pageInfo });
+  });
 
-    const isMember = await ensureMembership(chatGroupId, userId);
-    if (!isMember) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
-
-    const where = { chatGroupId, ...(before ? { createdAt: { lt: before } } : {}) };
-
-    // mark unread (others) as read
-    const unread = await prisma.message.findMany({
-      where: { chatGroupId, senderId: { not: userId }, readBy: { none: { id: userId } } },
-      select: { id: true },
-    });
-    if (unread.length) {
-      await prisma.$transaction(
-        unread.map((m) =>
-          prisma.message.update({
-            where: { id: m.id },
-            data:  { readBy: { connect: { id: userId } } },
-          })
-        )
-      );
-      io.to(chatGroupId).emit("messages:read", {
-        chatGroupId, userId, messageIds: unread.map((m) => m.id),
-      });
-    }
-
-    const rowsDesc = await prisma.message.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      take: limit,
-      include: {
-        sender: { select: { id: true, username: true, avatar: true } },
-        readBy: { select: { id: true } },
-      },
-    });
-
-    const items = rowsDesc.reverse();
-    const nextCursor = items.length ? items[0].createdAt : null;
-    const hasMore = nextCursor
-      ? (await prisma.message.count({
-          where: { chatGroupId, createdAt: { lt: nextCursor } },
-        })) > 0
-      : false;
-
-    res.status(StatusCodes.OK).json({ items, pageInfo: { hasMore, before: nextCursor } });
-  } catch (err) {
-    console.error("getMessages error", err);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to get messages" });
-  }
-};
-
-export const sendMessage = async (req, res) => {
-  try {
+  sendMessage = catchAsync(async (req, res, next) => {
     const { chatGroupId } = req.params;
-    const userId = req.userId;
-    const {
-      content,
-      mediaUrl,
-      clientTempId,
-      mimeType,
-      fileType,
-      type: rawType,     // NEW
-      isSystem: rawSys,  // NEW
-    } = req.body || {};
-
-    const isMember = await ensureMembership(chatGroupId, userId);
-    if (!isMember) {
-      return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied to this chat" });
+    const parsed = SendMessageRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new AppError(parsed.error.errors[0].message, StatusCodes.BAD_REQUEST, ErrorCodes.VALIDATION_ERROR);
     }
 
-    // --- Type & validation ---
-    const ALLOWED = ["TEXT", "IMAGE", "VIDEO", "FILE", "CALL_INVITE"];
-    let type = (rawType || "").toString().toUpperCase().trim();
+    const message = await messageService.sendMessage(req.userId, chatGroupId, parsed.data);
+    res.status(StatusCodes.CREATED).json(MessageResponseDto(message));
+  });
 
-    if (!type) {
-      // infer (your previous logic)
-      if (!content && !mediaUrl) {
-        return res.status(StatusCodes.BAD_REQUEST).json({ error: "Message content or media is required" });
-      }
-      if (mediaUrl) {
-        if (fileType)       type = fileType.toUpperCase();
-        else if (mimeType?.startsWith("image/")) type = "IMAGE";
-        else if (mimeType?.startsWith("video/")) type = "VIDEO";
-        else                    type = "FILE";
-      } else {
-        type = "TEXT";
-      }
-    }
-
-    if (!ALLOWED.includes(type)) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ error: "Invalid message type" });
-    }
-
-    // CALL_INVITE is a system-ish message; allow without content/media
-    if (type !== "CALL_INVITE" && !content && !mediaUrl) {
-      return res.status(StatusCodes.BAD_REQUEST).json({ error: "Message content or media is required" });
-    }
-
-    const isSystem = Boolean(rawSys) || type === "CALL_INVITE";
-
-    // --- Create message ---
-    const message = await prisma.message.create({
-      data: {
-        content:  content || null,
-        mediaUrl: mediaUrl || null,
-        type,
-        isSystem, // NEW: mark system call logs as system messages
-        sender:    { connect: { id: userId } },
-        chatGroup: { connect: { id: chatGroupId } },
-        readBy:    { connect: { id: userId } }, // sender auto-reads
-      },
-      include: {
-        sender: { select: { id: true, username: true, avatar: true } },
-        readBy: { select: { id: true } },
-      },
-    });
-
-    await prisma.chatGroup.update({
-      where: { id: chatGroupId },
-      data:  { lastActivityAt: new Date(), lastMessage: { connect: { id: message.id } } },
-    });
-
-    // socket broadcast (room == chatGroupId)
-    io.to(chatGroupId).emit("message:new", { chatGroupId, message, clientTempId });
-
-    // notifications for normal messages only (skip system call logs)
-    if (!isSystem) {
-      const group = await prisma.chatGroup.findUnique({
-        where: { id: chatGroupId },
-        select: { members: { select: { id: true } }, admins: { select: { id: true } } },
-      });
-      const recipientIds = [
-        ...(group?.members || []).map((m) => m.id),
-        ...(group?.admins  || []).map((a) => a.id),
-      ]
-        .filter((id) => id !== userId)
-        .filter((v, i, a) => a.indexOf(v) === i);
-
-      await Promise.all(
-        recipientIds.map((rid) =>
-          createAndEmitNotification({
-            recipientId: rid,
-            type: "MESSAGE",
-            message: `New message`,
-            relatedUserId: userId,
-            relatedPostId: null,
-          })
-        )
-      );
-    }
-
-    return res.status(StatusCodes.CREATED).json({ ...message, clientTempId });
-  } catch (err) {
-    console.error("sendMessage error", err);
-    return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to send message" });
-  }
-};
-
-
-export const markMessagesAsRead = async (req, res) => {
-  try {
+  markMessagesAsRead = catchAsync(async (req, res, next) => {
     const { chatGroupId } = req.params;
-    const userId = req.userId;
-
-    const isMember = await ensureMembership(chatGroupId, userId);
-    if (!isMember) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
-
-    const unread = await prisma.message.findMany({
-      where: { chatGroupId, senderId: { not: userId }, readBy: { none: { id: userId } } },
-      select: { id: true },
-    });
-    if (unread.length) {
-      await prisma.$transaction(
-        unread.map((m) =>
-          prisma.message.update({
-            where: { id: m.id },
-            data:  { readBy: { connect: { id: userId } } },
-          })
-        )
-      );
-      io.to(chatGroupId).emit("messages:read", {
-        chatGroupId,
-        userId,
-        messageIds: unread.map((m) => m.id),
-      });
-    }
-
+    await messageService.markAsRead(req.userId, chatGroupId);
     res.status(StatusCodes.OK).json({ ok: true });
-  } catch (err) {
-    console.error("markMessagesAsRead error", err);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to mark read" });
-  }
-};
+  });
 
-/* -------------------------
-   TYPING & PRESENCE (REST)
---------------------------*/
-
-// Start/stop typing via REST (these simply emit socket events).
-export const typingStart = async (req, res) => {
-  try {
-    const userId = req.userId;
+  typingStart = catchAsync(async (req, res, next) => {
     const { chatGroupId, username } = req.body;
-    if (!chatGroupId) return res.status(StatusCodes.BAD_REQUEST).json({ error: "chatGroupId required" });
-
-    const ok = await ensureMembership(chatGroupId, userId);
-    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
-
-    io.to(String(chatGroupId)).emit("typing:start", { chatGroupId: String(chatGroupId), userId: String(userId), username });
+    io.to(String(chatGroupId)).emit("typing:start", { chatGroupId, userId: req.userId, username });
     res.status(StatusCodes.OK).json({ ok: true });
-  } catch (e) {
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "typingStart failed" });
-  }
-};
+  });
 
-export const typingStop = async (req, res) => {
-  try {
-    const userId = req.userId;
+  typingStop = catchAsync(async (req, res, next) => {
     const { chatGroupId } = req.body;
-    if (!chatGroupId) return res.status(StatusCodes.BAD_REQUEST).json({ error: "chatGroupId required" });
-
-    const ok = await ensureMembership(chatGroupId, userId);
-    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
-
-    io.to(String(chatGroupId)).emit("typing:stop", { chatGroupId: String(chatGroupId), userId: String(userId) });
+    io.to(String(chatGroupId)).emit("typing:stop", { chatGroupId, userId: req.userId });
     res.status(StatusCodes.OK).json({ ok: true });
-  } catch {
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "typingStop failed" });
-  }
-};
+  });
 
-// Query online presence of members in a chat (for "online" chips in header)
-export const getChatPresence = async (req, res) => {
-  try {
-    const userId = req.userId;
+  getChatPresence = catchAsync(async (req, res, next) => {
     const { chatGroupId } = req.params;
-
-    const ok = await ensureMembership(chatGroupId, userId);
-    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
-
-    const group = await prisma.chatGroup.findUnique({
-      where: { id: String(chatGroupId) },
-      select: { members: { select: { id: true, username: true, avatar: true } }, admins: { select: { id: true, username: true, avatar: true } } },
-    });
-
-    const uniq = new Map();
-    for (const m of [...(group?.members || []), ...(group?.admins || [])]) {
-      uniq.set(m.id, m);
-    }
-
-    const users = Array.from(uniq.values()).map((u) => ({
-      ...u,
-      online: isUserOnline(String(u.id)),
-    }));
-
+    const users = await messageService.getPresence(req.userId, chatGroupId);
     res.status(StatusCodes.OK).json({ users });
-  } catch (e) {
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to fetch presence" });
-  }
-};
+  });
 
-/* -------------------------
-   CALL SIGNALING (REST)
---------------------------*/
-
-// These REST endpoints just emit the same socket events your server handles.
-// Useful if you want to initiate calls via HTTP or ensure auth/membership at the API layer.
-
-export const callOffer = async (req, res) => {
-  try {
-    const userId = req.userId;
+  callOffer = catchAsync(async (req, res, next) => {
     const { chatGroupId } = req.params;
-    const { sdp, fromUser } = req.body || {};
-    if (!chatGroupId || !sdp) return res.status(StatusCodes.BAD_REQUEST).json({ error: "chatGroupId and sdp required" });
-
-    const ok = await ensureMembership(chatGroupId, userId);
-    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
-
-    io.to(String(chatGroupId)).emit("call:offer", { sdp, fromUser: fromUser || { id: userId } });
+    const { sdp, fromUser } = req.body;
+    io.to(String(chatGroupId)).emit("call:offer", { sdp, fromUser: fromUser || { id: req.userId } });
     res.status(StatusCodes.OK).json({ ok: true });
-  } catch {
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to emit offer" });
-  }
-};
+  });
 
-export const callAnswer = async (req, res) => {
-  try {
-    const userId = req.userId;
+  callAnswer = catchAsync(async (req, res, next) => {
     const { chatGroupId } = req.params;
-    const { sdp, fromUser } = req.body || {};
-    if (!chatGroupId || !sdp) return res.status(StatusCodes.BAD_REQUEST).json({ error: "chatGroupId and sdp required" });
-
-    const ok = await ensureMembership(chatGroupId, userId);
-    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
-
-    io.to(String(chatGroupId)).emit("call:answer", { sdp, fromUser: fromUser || { id: userId } });
+    const { sdp, fromUser } = req.body;
+    io.to(String(chatGroupId)).emit("call:answer", { sdp, fromUser: fromUser || { id: req.userId } });
     res.status(StatusCodes.OK).json({ ok: true });
-  } catch {
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to emit answer" });
-  }
-};
+  });
 
-export const callCandidate = async (req, res) => {
-  try {
-    const userId = req.userId;
+  callCandidate = catchAsync(async (req, res, next) => {
     const { chatGroupId } = req.params;
-    const { candidate, fromUser } = req.body || {};
-    if (!chatGroupId || !candidate) return res.status(StatusCodes.BAD_REQUEST).json({ error: "chatGroupId and candidate required" });
-
-    const ok = await ensureMembership(chatGroupId, userId);
-    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
-
-    io.to(String(chatGroupId)).emit("call:candidate", { candidate, fromUser: fromUser || { id: userId } });
+    const { candidate, fromUser } = req.body;
+    io.to(String(chatGroupId)).emit("call:candidate", { candidate, fromUser: fromUser || { id: req.userId } });
     res.status(StatusCodes.OK).json({ ok: true });
-  } catch {
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to emit candidate" });
-  }
-};
+  });
 
-export const callEnd = async (req, res) => {
-  try {
-    const userId = req.userId;
+  callEnd = catchAsync(async (req, res, next) => {
     const { chatGroupId } = req.params;
-    const { reason } = req.body || {};
-
-    const ok = await ensureMembership(chatGroupId, userId);
-    if (!ok) return res.status(StatusCodes.FORBIDDEN).json({ error: "Access denied" });
-
+    const { reason } = req.body;
     io.to(String(chatGroupId)).emit("call:end", { reason: reason || "ended" });
     res.status(StatusCodes.OK).json({ ok: true });
-  } catch {
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ error: "Failed to emit call end" });
-  }
-};
+  });
+}
+
+export default new MessageController();

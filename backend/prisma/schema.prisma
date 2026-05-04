@@ -167,7 +167,7 @@ model Post {
   isAnonymous   Boolean  @default(false)         // Hide author identity
   isPublic      Boolean  @default(true)          // Public or private visibility
 
-  author   User   @relation("UserPosts", fields: [authorId], references: [id])
+  author   User   @relation("UserPosts", fields: [authorId], references: [id], onDelete: Cascade)
   authorId String
 
   tags         Tag[]   @relation("PostTags")
@@ -178,7 +178,7 @@ model Post {
   comments    Comment[]        @relation("PostComments")
   impressions PostImpression[]
 
-  parentPost   Post?   @relation("ThreadReplies", fields: [parentPostId], references: [id])
+  parentPost   Post?   @relation("ThreadReplies", fields: [parentPostId], references: [id], onDelete: Cascade)
   parentPostId String?
   replies      Post[]  @relation("ThreadReplies")
 
@@ -195,9 +195,9 @@ model Tag {
 model Comment {
   id        String    @id @default(uuid())
   content   String
-  author    User      @relation("UserComments", fields: [authorId], references: [id])
+  author    User      @relation("UserComments", fields: [authorId], references: [id], onDelete: Cascade)
   authorId  String
-  post      Post      @relation("PostComments", fields: [postId], references: [id])
+  post      Post      @relation("PostComments", fields: [postId], references: [id], onDelete: Cascade)
   postId    String
   parent    Comment?  @relation("ParentComment", fields: [parentId], references: [id])
   parentId  String?
@@ -208,9 +208,9 @@ model Comment {
 
 model Share {
   id        String   @id @default(uuid())
-  post      Post     @relation("PostShares", fields: [postId], references: [id])
+  post      Post     @relation("PostShares", fields: [postId], references: [id], onDelete: Cascade)
   postId    String
-  user      User     @relation("UserShares", fields: [userId], references: [id])
+  user      User     @relation("UserShares", fields: [userId], references: [id], onDelete: Cascade)
   userId    String
   comment   String?
   createdAt DateTime @default(now())
@@ -218,9 +218,9 @@ model Share {
 
 model Follow {
   id          String       @id @default(uuid())
-  follower    User         @relation("Following", fields: [followerId], references: [id])
+  follower    User         @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
   followerId  String
-  following   User         @relation("Followers", fields: [followingId], references: [id])
+  following   User         @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
   followingId String
   status      FollowStatus @default(ACCEPTED) // For private profiles can be PENDING
   createdAt   DateTime     @default(now())
@@ -231,7 +231,7 @@ model Follow {
 
 model Story {
   id        String    @id @default(uuid())
-  user      User      @relation(fields: [userId], references: [id])
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId    String
   mediaUrl  String
   type      StoryType
@@ -245,7 +245,7 @@ model Notification {
   id            String           @id @default(uuid())
   type          NotificationType
   message       String
-  recipient     User             @relation(fields: [recipientId], references: [id])
+  recipient     User             @relation(fields: [recipientId], references: [id], onDelete: Cascade)
   recipientId   String
   createdAt     DateTime         @default(now())
   read          Boolean          @default(false)
@@ -257,9 +257,9 @@ model Notification {
 
 model PostImpression {
   id       String   @id @default(uuid())
-  user     User?    @relation(fields: [userId], references: [id])
+  user     User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId   String?
-  post     Post     @relation(fields: [postId], references: [id])
+  post     Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
   postId   String
   viewedAt DateTime @default(now())
   ip       String?
@@ -267,18 +267,18 @@ model PostImpression {
 
 model ProfileView {
   id       String   @id @default(uuid())
-  viewer   User?    @relation("Viewer", fields: [viewerId], references: [id])
+  viewer   User?    @relation("Viewer", fields: [viewerId], references: [id], onDelete: Cascade)
   viewerId String?
-  viewed   User     @relation("Viewed", fields: [viewedId], references: [id])
+  viewed   User     @relation("Viewed", fields: [viewedId], references: [id], onDelete: Cascade)
   viewedId String
   viewedAt DateTime @default(now())
 }
 
 model Call {
   id        String     @id @default(uuid())
-  caller    User       @relation("CallsMade", fields: [callerId], references: [id])
+  caller    User       @relation("CallsMade", fields: [callerId], references: [id], onDelete: Cascade)
   callerId  String
-  callee    User       @relation("CallsReceived", fields: [calleeId], references: [id])
+  callee    User       @relation("CallsReceived", fields: [calleeId], references: [id], onDelete: Cascade)
   calleeId  String
   startedAt DateTime   @default(now())
   endedAt   DateTime?
@@ -299,7 +299,7 @@ model GroupCall {
 
 model UserSettings {
   id                 String   @id @default(uuid())
-  user               User     @relation(fields: [userId], references: [id])
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId             String   @unique
   darkMode           Boolean  @default(false)
   notificationEmail  Boolean  @default(true)
