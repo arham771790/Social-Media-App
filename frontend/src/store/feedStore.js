@@ -69,5 +69,7 @@ patchAuthorFollow: (authorId, patch) =>
       home: get().home.map(p => p.id === postId ? { ...p, ...patch } : p),
       explore: get().explore.map(p => p.id === postId ? { ...p, ...patch } : p),
     });
-  }
+  },
+
+  reset: () => set({ home: [], explore: [], pagination: { home: {}, explore: {} }, error: null, isLoading: false })
 }));

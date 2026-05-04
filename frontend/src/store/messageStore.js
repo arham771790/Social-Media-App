@@ -3,13 +3,7 @@
 
 import { create } from "zustand";
 import api from "@/lib/axios";
-import {
-  connectSocket,
-  joinRoom as sockJoin,
-  leaveRoom as sockLeave,
-  emitTyping,
-  getSocket,
-} from "@/lib/socket";
+import { socketManager } from "@/lib/socketManager";
 import { useAuthStore } from "@/store/authStore";
 
 const ACTIVE_KEY = "activeChatId";
@@ -54,27 +48,27 @@ groupDetailsById: {},           // optional cache if you later add a /messages/:
 
   // ----- SOCKET BIND -----
   bindSocket: (token) => {
-    const s = connectSocket(token || getToken());
-    if (!s) return;
+    const socket = socketManager.connect(token || getToken());
+    if (!socket) return;
 
-    s.off("connect");
-    s.on("connect", async () => {
+    socket.off("connect");
+    socket.on("connect", async () => {
       const active = get().activeChatId;
-      if (active) await sockJoin(active);
+      if (active) await socketManager.joinRoom(active);
       set({ socketReady: true });
     });
 
     // presence
-    s.off("presence:online");
-    s.off("presence:offline");
-    s.on("presence:online", ({ userId }) => {
+    socket.off("presence:online");
+    socket.off("presence:offline");
+    socket.on("presence:online", ({ userId }) => {
       set((st) => {
         const setIds = new Set(st.onlineUserIds);
         setIds.add(String(userId));
         return { onlineUserIds: setIds };
       });
     });
-    s.on("presence:offline", ({ userId }) => {
+    socket.on("presence:offline", ({ userId }) => {
       set((st) => {
         const setIds = new Set(st.onlineUserIds);
         setIds.delete(String(userId));
@@ -83,9 +77,9 @@ groupDetailsById: {},           // optional cache if you later add a /messages/:
     });
 
     // typing
-    s.off("typing:start");
-    s.off("typing:stop");
-    s.on("typing:start", ({ chatGroupId, userId, username }) => {
+    socket.off("typing:start");
+    socket.off("typing:stop");
+    socket.on("typing:start", ({ chatGroupId, userId, username }) => {
       set((st) => {
         const by = { ...(st.typingByGroup || {}) };
         const room = { ...(by[chatGroupId] || {}) };
@@ -94,7 +88,7 @@ groupDetailsById: {},           // optional cache if you later add a /messages/:
         return { typingByGroup: by };
       });
     });
-    s.on("typing:stop", ({ chatGroupId, userId }) => {
+    socket.on("typing:stop", ({ chatGroupId, userId }) => {
       set((st) => {
         const by = { ...(st.typingByGroup || {}) };
         const room = { ...(by[chatGroupId] || {}) };
@@ -105,8 +99,8 @@ groupDetailsById: {},           // optional cache if you later add a /messages/:
     });
 
     // new message
-    s.off("message:new");
-    s.on("message:new", ({ chatGroupId, message, clientTempId }) => {
+    socket.off("message:new");
+    socket.on("message:new", ({ chatGroupId, message, clientTempId }) => {
       const byRoom = { ...(get().messagesByGroup || {}) };
       const list = [...(byRoom[chatGroupId] || [])];
 
@@ -142,8 +136,8 @@ groupDetailsById: {},           // optional cache if you later add a /messages/:
     });
 
     // read receipts
-    s.off("messages:read");
-    s.on("messages:read", ({ chatGroupId, userId, messageIds }) => {
+    socket.off("messages:read");
+    socket.on("messages:read", ({ chatGroupId, userId, messageIds }) => {
       const byRoom = { ...(get().messagesByGroup || {}) };
       const list = [...(byRoom[chatGroupId] || [])];
       if (!list.length) return;
@@ -216,11 +210,11 @@ groupDetailsById: {},           // optional cache if you later add a /messages/:
   // ----- ACTIVE ROOM + READ -----
   setActiveChat: async (groupId) => {
     const prev = get().activeChatId;
-    if (prev && prev !== groupId) await sockLeave(prev);
+    if (prev && prev !== groupId) await socketManager.leaveRoom(prev);
 
     set({ activeChatId: groupId });
     if (groupId) {
-      await sockJoin(groupId);
+      await socketManager.joinRoom(groupId);
       await get().fetchMessages(groupId);
       await get().markRead(groupId);
       await get().refreshPresence(groupId);
@@ -233,11 +227,11 @@ groupDetailsById: {},           // optional cache if you later add a /messages/:
   // wrappers
   joinRoom: async (groupId) => {
     if (!groupId) return { ok: false };
-    return await sockJoin(groupId);
+    return await socketManager.joinRoom(groupId);
   },
   leaveRoom: async (groupId) => {
     if (!groupId) return { ok: false };
-    return await sockLeave(groupId);
+    return    await socketManager.leaveRoom(groupId);
   },
 
   markRead: async (chatGroupId) => {
@@ -503,10 +497,10 @@ leaveGroupAction: async (chatGroupId) => {
   // ----- TYPING -----
   startTyping: (chatGroupId) => {
     const me = getUser();
-    emitTyping("start", { chatGroupId, username: me?.username, userId: me?.id });
+    socketManager.emitTyping("start", { chatGroupId, username: me?.username, userId: me?.id });
   },
   stopTyping: (chatGroupId) => {
     const me = getUser();
-    emitTyping("stop", { chatGroupId, userId: me?.id });
+    socketManager.emitTyping("stop", { chatGroupId, userId: me?.id });
   },
 }));

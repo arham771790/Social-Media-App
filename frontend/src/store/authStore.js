@@ -2,8 +2,8 @@
 /**
  * Auth Store
  * - Handles register, login, logout, forgot/reset password
- * - Persists token + user to localStorage
- * - Interceptor (in src/lib/axios.js) attaches token & redirects on 401
+ * - Persists token + user to localStorage + Cookies (for Middleware)
+ * - Interceptor (in src/lib/axios.ts) attaches token & redirects on 401
  */
 import { create } from "zustand";
 import api from "@/lib/axios";
@@ -15,12 +15,18 @@ export const useAuthStore = create((set, get) => ({
   isLoading: false,
   error: null,
 
-  // Load from localStorage on app start (call in layout)
+  // Load from localStorage on app start (sync with cookies for Middleware)
   hydrate: () => {
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
       const userStr = typeof window !== "undefined" ? localStorage.getItem("user") : null;
       const user = userStr ? JSON.parse(userStr) : null;
+      
+      // Sync cookie if token exists in localStorage but not in cookie (e.g. fresh session)
+      if (token && typeof document !== 'undefined' && !document.cookie.includes('token=')) {
+        document.cookie = `token=${token}; path=/; max-age=604800; samesite=lax`;
+      }
+
       set({
         token,
         user,
@@ -31,11 +37,11 @@ export const useAuthStore = create((set, get) => ({
       // noop
     }
   },
-     requestEmailVerification: async (email) => {
+
+  requestEmailVerification: async (email) => {
     try {
       const { data } = await api.post("/auth/verify-email/request", { email });
-      // optional: set({ ... }) but do NOT toggle isLoading here
-      return data; // { message } or { ok: true }
+      return data;
     } catch (err) {
       const msg = err?.response?.data?.error || "Failed to send code";
       set({ error: msg });
@@ -46,7 +52,6 @@ export const useAuthStore = create((set, get) => ({
   confirmEmailVerification: async ({ email, code }) => {
     try {
       const { data } = await api.post("/auth/verify-email/confirm", { email, code });
-      // Accept { verifyToken }, { token }, or similar
       const token = data?.verifyToken || data?.token || data?.data?.verifyToken;
       if (!token) throw new Error("Verification failed");
       return token;
@@ -59,7 +64,6 @@ export const useAuthStore = create((set, get) => ({
 
   registerVerified: async ({ username, email, password, verifyToken }) => {
     try {
-      // Do NOT set global isLoading here either; page shows local spinner
       const { data } = await api.post("/auth/register", {
         username,
         email,
@@ -67,11 +71,11 @@ export const useAuthStore = create((set, get) => ({
         verifyToken,
       });
 
-      // If backend logs in immediately
       if (data?.token && data?.user) {
         if (typeof window !== "undefined") {
           localStorage.setItem("token", data.token);
           localStorage.setItem("user", JSON.stringify(data.user));
+          document.cookie = `token=${data.token}; path=/; max-age=604800; samesite=lax`;
         }
         set({
           token: data.token,
@@ -88,7 +92,6 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Auth — Register
   register: async ({ username, email, password }) => {
     set({ isLoading: true, error: null });
     try {
@@ -96,6 +99,7 @@ export const useAuthStore = create((set, get) => ({
       if (typeof window !== "undefined") {
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
+        document.cookie = `token=${data.token}; path=/; max-age=604800; samesite=lax`;
       }
       set({
         token: data.token,
@@ -111,7 +115,6 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Auth — Login
   login: async ({ email, password }) => {
     set({ isLoading: true, error: null });
     try {
@@ -119,6 +122,7 @@ export const useAuthStore = create((set, get) => ({
       if (typeof window !== "undefined") {
         localStorage.setItem("token", data.token);
         localStorage.setItem("user", JSON.stringify(data.user));
+        document.cookie = `token=${data.token}; path=/; max-age=604800; samesite=lax`;
       }
       set({
         token: data.token,
@@ -134,13 +138,12 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Auth — Forgot Password
   forgotPassword: async (email) => {
     set({ isLoading: true, error: null });
     try {
       const { data } = await api.post("/auth/forgot-password", { email });
       set({ isLoading: false });
-      return data; // { message }
+      return data;
     } catch (err) {
       const msg = err?.response?.data?.error || "Failed to send OTP";
       set({ error: msg, isLoading: false });
@@ -148,32 +151,32 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Auth — Reset Password (email + otp + newPassword)
-  // Auth — Reset Password (email + otp + newPassword)
-resetPassword: async ({ email, otp, newPassword }) => {
-  set({ isLoading: true, error: null });
-  try {
-    // Backend expects: { email, otp, newPassword }
-    const { data } = await api.post("/auth/reset-password", {
-      email,
-      otp,
-      newPassword,
-    });
-    set({ isLoading: false });
-    return data; // e.g. { message: "Password reset successful" }
-  } catch (err) {
-    const msg = err?.response?.data?.error || "Failed to reset password";
-    set({ error: msg, isLoading: false });
-    throw new Error(msg);
-  }
-},
-
-
-  // Refresh current user (/user/me)
-  checkAuth: async () => {
+  resetPassword: async ({ email, otp, newPassword }) => {
     set({ isLoading: true, error: null });
     try {
-      const { data } = await api.get("/user/me");
+      const { data } = await api.post("/auth/reset-password", { email, otp, newPassword });
+      set({ isLoading: false });
+      return data;
+    } catch (err) {
+      const msg = err?.response?.data?.error || "Failed to reset password";
+      set({ error: msg, isLoading: false });
+      throw new Error(msg);
+    }
+  },
+
+  checkAuth: async () => {
+    // If no token in memory, try to hydrate first
+    if (!get().token && typeof window !== 'undefined') {
+       const token = localStorage.getItem('token');
+       if (!token) {
+         set({ isAuthenticated: false, isLoading: false });
+         return null;
+       }
+    }
+
+    set({ isLoading: true, error: null });
+    try {
+      const { data } = await api.get("/users/me");
       if (typeof window !== "undefined") {
         localStorage.setItem("user", JSON.stringify(data));
       }
@@ -181,16 +184,32 @@ resetPassword: async ({ email, otp, newPassword }) => {
       return data;
     } catch (err) {
       const msg = err?.response?.data?.error || "Failed to load profile";
-      set({ error: msg, isLoading: false });
-      throw new Error(msg);
+      // Clear token and user if /me fails (invalid session)
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+      }
+      set({ 
+        user: null, 
+        token: null, 
+        isAuthenticated: false, 
+        error: msg, 
+        isLoading: false 
+      });
     }
   },
 
-  // Logout (interceptor will also handle 401 redirects)
-  logout: () => {
+  logout: async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch (e) {
+      // ignore if logout fails (token might be expired)
+    }
     if (typeof window !== "undefined") {
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+      document.cookie = "token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     }
     set({ user: null, token: null, isAuthenticated: false, error: null });
   },

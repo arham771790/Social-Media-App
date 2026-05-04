@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import toast from "react-hot-toast";
-import { getSocket, ring, endCall } from "@/lib/socket";
+import { socketManager } from "@/lib/socketManager";
 import { useAuthStore } from "@/store/authStore";
 import { useMessageStore } from "@/store/messageStore";
 
@@ -21,7 +21,7 @@ export const useCallStore = create((set, get) => ({
   startCallFromThread: async (roomId, mode = "audio") => {
     const me = useAuthStore.getState().user;
     if (!roomId || !me) return;
-    ring(roomId, { fromUser: { id: me.id, username: me.username }, mode });
+    socketManager.ring(roomId, { fromUser: { id: me.id, username: me.username }, mode });
     get().uiOpen(roomId, mode);
   },
 
@@ -36,7 +36,7 @@ export const useCallStore = create((set, get) => ({
   declineIncoming: async (reason = "declined") => {
     try {
       const inc = get().incoming;
-      if (inc?.roomId) endCall(inc.roomId, reason);
+      if (inc?.roomId) socketManager.endCall(inc.roomId, reason);
       // log missed/declined
       if (inc?.roomId) {
         await useMessageStore.getState().sendCallLog(inc.roomId, {

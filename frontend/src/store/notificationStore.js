@@ -99,6 +99,14 @@ export const useNotificationStore = create((set, get) => ({
     get().bindSocket(nextToken);
   },
 
+  // Fetch just unread count
+  fetchUnreadCount: async () => {
+    try {
+      const { data } = await api.get("/notifications/unread-count");
+      set({ unreadCount: data.count || 0 });
+    } catch {}
+  },
+
   reset: () => {
     set({
       items: [],
